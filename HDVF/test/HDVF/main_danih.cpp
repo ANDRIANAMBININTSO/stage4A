@@ -32,6 +32,7 @@ typedef HDVF::Hdvf_traits_3<Kernel> Traits;
 using Complex = HDVF::Simplicial_chain_complex<Coefficient_ring,Traits> ;
 using HDVF_type = HDVF::Hdvf_space<Complex> ;
 using PSC_flag = HDVF::PSC_flag;
+using Cell_pair = HDVF::Cell_pair;
 
 
 enum operations{
@@ -107,7 +108,7 @@ int distance(HDVF_type X, HDVF_type X_prime, int dim){
 
 
 //returns a pair where: first is the dimension, second is the index.
-std::vector<std::vector<size_t>> misaligned(HDVF_type X, HDVF_type X_prime, int dim){
+std::vector<std::vector<size_t>> misaligned(const HDVF_type &X, const HDVF_type &X_prime, int dim){
     std::vector<std::vector<size_t>> result;
     std::vector<size_t> misaligned_P;
     std::vector<size_t> misaligned_S;
@@ -144,26 +145,23 @@ std::vector<std::vector<size_t>> misaligned(HDVF_type X, HDVF_type X_prime, int 
 
 }
 
-void supprimer(int cellule, std::vector<size_t>& misaligned_flag){
-    for(int i=0; i<(misaligned_flag.size()); i++){
-        if (misaligned_flag[i] == cellule){
-            misaligned_flag.erase(misaligned_flag.begin()+i);
-        }
-    }
+void supprimer(size_t cellule, std::vector<size_t>& v){
+    v.erase(std::remove(v.begin(), v.end(), cellule), v.end());
 }
 
-bool dedans(size_t sigma, Column_chain cc){
+bool dedans(size_t sigma, Column_chain &cc){
     bool result = false;
     for(Column_chain::const_iterator it=cc.begin(); it!=cc.end(); it++){
         if(it->first==sigma){
             sigma = it->first;
             result = true;
+            break;
         }
     }
     return result;
 }
 
-std::vector<Operation> connectedness(HDVF_type X, HDVF_type X_prime, int dim){
+std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
     std::vector<Operation> result;
     int delta = distance(X, X_prime, dim);
 
@@ -172,59 +170,59 @@ std::vector<Operation> connectedness(HDVF_type X, HDVF_type X_prime, int dim){
     std::vector<size_t> misaligned_S = misaligned_PSC[1];
     std::vector<size_t> misaligned_C = misaligned_PSC[2];
 
-    int gamma, sigma, pi;
+    size_t gamma, sigma, pi;
     while (delta > 0){
-        if(misaligned_C.size()!=0){
+        misaligned_P = misaligned_PSC[0];
+        misaligned_S = misaligned_PSC[1];
+        misaligned_C = misaligned_PSC[2];
+        if(misaligned_C.size()>0){
             gamma = misaligned_C[0];
             if(X_prime.psc_flag(gamma, dim)==PSC_flag::SECONDARY){
                 const Column_chain& g_gamma(CGAL::OSM::cget_column(X.matrix_g(dim), gamma));
                 for(Column_chain::const_iterator it = g_gamma.begin(); it != g_gamma.end(); ++it){
-                    sigma = it->first;
-                    if(X_prime.psc_flag(sigma, dim) != PSC_flag::SECONDARY){
+                    if(X_prime.psc_flag(it->first, dim) != PSC_flag::SECONDARY && X.is_valid_pair_for_W(it->first, gamma, dim)){
+                        sigma = it->first;
                         break;
                     }
                 }
                 X.W(sigma, gamma, dim);
                 if(X_prime.psc_flag(sigma, dim) == PSC_flag::PRIMARY){
-                    supprimer(gamma, misaligned_C);
-                    misaligned_C.push_back(sigma);
-                    supprimer(sigma, misaligned_S);
+                    misaligned_PSC = misaligned(X, X_prime, dim);
                     delta-=3;
                 }
                 else{
-                    supprimer(gamma, misaligned_C);
-                    supprimer(sigma, misaligned_S);
+                    misaligned_PSC = misaligned(X, X_prime, dim);
                     delta-=2;
                 }
-                    
+                Operation op(operations::W, sigma, gamma, dim);
+                result.push_back(op);
             }
             else{
                 const Row_chain& f_etoile_gamma(CGAL::OSM::cget_row(X.matrix_f(dim), gamma));
                 for(Row_chain::const_iterator it = f_etoile_gamma.begin(); it != f_etoile_gamma.end(); ++it){
-                    pi = it->first;
-                    if(X_prime.psc_flag(pi, dim) != PSC_flag::PRIMARY){
+                    if(X_prime.psc_flag(it->first, dim) != PSC_flag::PRIMARY && X.is_valid_pair_for_M(it->first, gamma, dim)){
+                        pi = it->first;
                         break;
                     }
                 }
                 X.M(pi, gamma, dim);
                 if(X_prime.psc_flag(pi, dim) == PSC_flag::SECONDARY){
-                    supprimer(gamma, misaligned_C);
-                    supprimer(pi, misaligned_P);
-                    misaligned_C.push_back(pi);
+                    misaligned_PSC = misaligned(X, X_prime, dim);
                     delta -= 3;
                 }
                 else{
-                    supprimer(gamma, misaligned_C);
-                    supprimer(pi, misaligned_P);
+                    misaligned_PSC = misaligned(X, X_prime, dim);
                     delta-=2;
                 }
+                Operation op(operations::M, pi, gamma, dim);
+                result.push_back(op);
             }
         }
         else{
             pi = misaligned_P[0];
             Column_chain dh_pi = X.htdt(pi, dim);
             for(Column_chain::const_iterator it=dh_pi.begin(); it!=dh_pi.end(); it++){
-                if(X.psc_flag(it->first, dim)==PSC_flag::SECONDARY && X_prime.psc_flag(it->first, dim)==PSC_flag::PRIMARY){
+                if(X.psc_flag(it->first, dim)==PSC_flag::SECONDARY && X_prime.psc_flag(it->first, dim)==PSC_flag::PRIMARY && X.is_valid_pair_for_MW(pi, it->first, dim)){
                     sigma = it->first;
                     break;
                 }
@@ -232,15 +230,24 @@ std::vector<Operation> connectedness(HDVF_type X, HDVF_type X_prime, int dim){
             Column_chain hd_pi = X.hd(pi, dim);
             if(dedans(sigma, hd_pi)){
                 X.MW(pi, sigma, dim);
-                supprimer(pi, misaligned_P);
-                supprimer(sigma, misaligned_S);
                 delta -= 6;
+                misaligned_PSC = misaligned(X, X_prime, dim);
+                Operation op(operations::MW, sigma, pi, dim);
+                result.push_back(op);
             }
             else{
                 const Row_chain& f_pi(CGAL::OSM::cget_row(X.matrix_f(dim), pi));
-                gamma = f_pi.begin()->first;
+                for(Row_chain::const_iterator it = f_pi.begin(); it != f_pi.end(); ++it){
+                    if(X.is_valid_pair_for_M(it->first, gamma, dim)){
+                        pi = it->first;
+                        break;
+                    }
+                }
                 X.M(pi, gamma, dim);
                 delta -= 1;
+                misaligned_PSC = misaligned(X, X_prime, dim);
+                Operation op(operations::M, pi, gamma, dim);
+                result.push_back(op);
             }
         }
     }
@@ -263,6 +270,10 @@ int main(int argc, char ** argv){
     hdvf.compute_perfect_hdvf();
     hdvf1.compute_rand_perfect_hdvf();
 
-    
+    int distance_init = distance(hdvf, hdvf1, 1);
+    std::vector<Operation> ops = connectedness(hdvf, hdvf1, 1);
+    int distance_fin = distance(hdvf, hdvf1, 1);
+    std::cout << "Distance init: " << distance_init << std::endl;
+    std::cout << "Distance fin: " << distance_fin << std::endl;
     return 0;
 }
