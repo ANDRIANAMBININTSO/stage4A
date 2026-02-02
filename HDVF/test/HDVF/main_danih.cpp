@@ -172,26 +172,26 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
 
     size_t gamma, sigma, pi;
     while (delta > 0){
-        misaligned_P = misaligned_PSC[0];
-        misaligned_S = misaligned_PSC[1];
-        misaligned_C = misaligned_PSC[2];
         if(misaligned_C.size()>0){
             gamma = misaligned_C[0];
             if(X_prime.psc_flag(gamma, dim)==PSC_flag::SECONDARY){
                 const Column_chain& g_gamma(CGAL::OSM::cget_column(X.matrix_g(dim), gamma));
                 for(Column_chain::const_iterator it = g_gamma.begin(); it != g_gamma.end(); ++it){
-                    if(X_prime.psc_flag(it->first, dim) != PSC_flag::SECONDARY && X.is_valid_pair_for_W(it->first, gamma, dim)){
+                    if(X_prime.psc_flag(it->first, dim) != PSC_flag::SECONDARY){
                         sigma = it->first;
                         break;
                     }
                 }
                 X.W(sigma, gamma, dim);
                 if(X_prime.psc_flag(sigma, dim) == PSC_flag::PRIMARY){
-                    misaligned_PSC = misaligned(X, X_prime, dim);
+                    supprimer(gamma, misaligned_C);
+                    supprimer(sigma, misaligned_S);
+                    misaligned_P.push_back(sigma);
                     delta-=3;
                 }
                 else{
-                    misaligned_PSC = misaligned(X, X_prime, dim);
+                    supprimer(gamma, misaligned_C);
+                    supprimer(sigma, misaligned_S);
                     delta-=2;
                 }
                 Operation op(operations::W, sigma, gamma, dim);
@@ -200,18 +200,21 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
             else{
                 const Row_chain& f_etoile_gamma(CGAL::OSM::cget_row(X.matrix_f(dim), gamma));
                 for(Row_chain::const_iterator it = f_etoile_gamma.begin(); it != f_etoile_gamma.end(); ++it){
-                    if(X_prime.psc_flag(it->first, dim) != PSC_flag::PRIMARY && X.is_valid_pair_for_M(it->first, gamma, dim)){
+                    if(X_prime.psc_flag(it->first, dim) != PSC_flag::PRIMARY){
                         pi = it->first;
                         break;
                     }
                 }
                 X.M(pi, gamma, dim);
                 if(X_prime.psc_flag(pi, dim) == PSC_flag::SECONDARY){
-                    misaligned_PSC = misaligned(X, X_prime, dim);
+                    supprimer(gamma, misaligned_C);
+                    supprimer(pi, misaligned_P);
+                    misaligned_C.push_back(pi);
                     delta -= 3;
                 }
                 else{
-                    misaligned_PSC = misaligned(X, X_prime, dim);
+                    supprimer(gamma, misaligned_C);
+                    supprimer(pi, misaligned_S);
                     delta-=2;
                 }
                 Operation op(operations::M, pi, gamma, dim);
@@ -222,7 +225,7 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
             pi = misaligned_P[0];
             Column_chain dh_pi = X.htdt(pi, dim);
             for(Column_chain::const_iterator it=dh_pi.begin(); it!=dh_pi.end(); it++){
-                if(X.psc_flag(it->first, dim)==PSC_flag::SECONDARY && X_prime.psc_flag(it->first, dim)==PSC_flag::PRIMARY && X.is_valid_pair_for_MW(pi, it->first, dim)){
+                if(X.psc_flag(it->first, dim)==PSC_flag::SECONDARY && X_prime.psc_flag(it->first, dim)==PSC_flag::PRIMARY){
                     sigma = it->first;
                     break;
                 }
@@ -231,7 +234,8 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
             if(dedans(sigma, hd_pi)){
                 X.MW(pi, sigma, dim);
                 delta -= 6;
-                misaligned_PSC = misaligned(X, X_prime, dim);
+                supprimer(pi, misaligned_P);
+                supprimer(sigma, misaligned_S);
                 Operation op(operations::MW, sigma, pi, dim);
                 result.push_back(op);
             }
@@ -245,7 +249,10 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
                 }
                 X.M(pi, gamma, dim);
                 delta -= 1;
-                misaligned_PSC = misaligned(X, X_prime, dim);
+                supprimer(gamma, misaligned_C);
+                supprimer(pi, misaligned_P);
+                misaligned_P.push_back(gamma);
+                misaligned_C.push_back(pi);
                 Operation op(operations::M, pi, gamma, dim);
                 result.push_back(op);
             }
