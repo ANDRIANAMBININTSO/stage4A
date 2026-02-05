@@ -59,7 +59,20 @@ public:
         std::cout << _op << ": " << _sigma << ", " << _gamma << std::endl;
     }
 };
-
+struct ztransformation{
+    HDVF_type X;
+    Operation op;
+    int dim;
+};
+typedef struct ztransformation transformation;
+struct zdata
+{
+    int id;
+    bool visite;
+    int distance;
+    transformation T;
+};
+typedef struct zdata Data;
 
 
 void afficher(std::vector<size_t> tab){
@@ -69,8 +82,6 @@ void afficher(std::vector<size_t> tab){
     }
     std::cout << "]" << std::endl;
 }
-
-
 int distance(HDVF_type X, HDVF_type X_prime, int dim){
     int result = 0;
     std::vector<size_t> temp;
@@ -110,8 +121,6 @@ int distance(HDVF_type X, HDVF_type X_prime, int dim){
     
     return result;
 }
-
-
 //returns a vector of all the misaligned cells ordered by their labels.
 std::vector<std::vector<size_t>> misaligned(const HDVF_type &X, const HDVF_type &X_prime, int dim){
     std::vector<std::vector<size_t>> result;
@@ -149,11 +158,9 @@ std::vector<std::vector<size_t>> misaligned(const HDVF_type &X, const HDVF_type 
     return result;
 
 }
-
 void supprimer(size_t cellule, std::vector<size_t>& v){
     v.erase(std::remove(v.begin(), v.end(), cellule), v.end());
 }
-
 bool dedans(size_t sigma, Column_chain &cc){
     bool result = false;
     for(Column_chain::const_iterator it=cc.begin(); it!=cc.end(); it++){
@@ -165,7 +172,6 @@ bool dedans(size_t sigma, Column_chain &cc){
     }
     return result;
 }
-
 std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
     std::vector<Operation> result;
     int delta = distance(X, X_prime, dim);
@@ -274,6 +280,14 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
     return result;
 }
 
+void traiter(HDVF_type X, std::vector<transformations> &T){
+
+}
+
+std::map<HDVF_type, Data> flooding(HDVF_type X, HDVF_type X_prime, int dim){
+    
+}
+
 int main(int argc, char ** argv){
     
     std::string chemin = "data/three_triangles.off";
@@ -286,11 +300,8 @@ int main(int argc, char ** argv){
 //    // Build empty HDVF
     HDVF_type hdvf(complex, HDVF::OPT_FULL, 1);
     HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
-    // Compute a perfect HDVF
-    hdvf.compute_perfect_hdvf();
-    hdvf1.compute_rand_perfect_hdvf();
-    //hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
-    //hdvf1.read_hdvf_reduction("tmp/hdvf1.hdvf");
+    hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
+    hdvf1.read_hdvf_reduction("tmp/hdvf1.hdvf");
 
     std::vector<Operation> ops = connectedness(hdvf, hdvf1, 1);
     return 0;
