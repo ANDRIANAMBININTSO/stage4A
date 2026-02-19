@@ -41,7 +41,7 @@ class Hdvf_space : public Hdvf<ChainComplex> {
 
 public:
     using Hdvf<Chain_complex>::hd;
-    using Hdvf<Chain_complex>::htdt;
+    //using Hdvf<Chain_complex>::htdt;
 
     Hdvf_space(const Chain_complex& K, int hdvf_opt = OPT_FULL, int dimension_restriction = -1): Hdvf<Chain_complex>(K){ }
     //Hdvf_space(const Hdvf_space& hdvf) : Hdvf_core<ChainComplex, OSM::Sparse_chain, OSM::Sparse_matrix>(hdvf) { }
