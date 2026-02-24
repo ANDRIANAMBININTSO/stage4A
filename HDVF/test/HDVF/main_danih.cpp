@@ -4,14 +4,16 @@
 #include <fstream>
 #include <random>
 #include <map>
-#include <set>
 #include <ostream>
 #include <cassert>
+#include <cmath>
+#include <functional>
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/Zp.h>
 #include <CGAL/Z2.h>
 #include <CGAL/HDVF/Hdvf_traits_3.h>
 #include <CGAL/HDVF/Mesh_object_io.h>
+#include <CGAL/HDVF/Surface_mesh_io.h>
 #include <CGAL/HDVF/Simplicial_chain_complex.h>
 #include <CGAL/HDVF/Geometric_chain_complex_tools.h>
 #include <CGAL/HDVF/Hdvf.h>
@@ -31,7 +33,8 @@ typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::ROW> Row_chain;
 typedef CGAL::OSM::Sparse_matrix<Coefficient_ring, CGAL::OSM::ROW> Row_matrix;
 typedef CGAL::Simple_cartesian<double> Kernel;
 typedef HDVF::Hdvf_traits_3<Kernel> Traits;
-using Complex = HDVF::Simplicial_chain_complex<Coefficient_ring,Traits> ;
+typedef CGAL::Surface_mesh<Kernel::Point_3> Surface_mesh;
+using Complex = HDVF::Abstract_simplicial_chain_complex<Coefficient_ring>;
 using HDVF_type = HDVF::Hdvf<Complex> ;
 using PSC_flag = HDVF::PSC_flag;
 using Cell_pair = HDVF::Cell_pair;
@@ -62,11 +65,11 @@ public:
 struct Data
 {
     int id;
-    int distance;
+    int distance, distance_connectedness;
     int pred;
     Operation op;
     int deg_M, deg_W, deg_MW;
-    Data(int id1, int distance1, int pred1, Operation op1, int deg_M1, int deg_W1, int deg_MW1): id(id1), distance(distance1), pred(pred1), op(op1), deg_M(deg_M1), deg_W(deg_W1), deg_MW(deg_MW1){}
+    Data(int id1, int distance1, int distance_connectedness1, int pred1, Operation op1, int deg_M1, int deg_W1, int deg_MW1): id(id1), distance(distance1), distance_connectedness(distance_connectedness1), pred(pred1), op(op1), deg_M(deg_M1), deg_W(deg_W1), deg_MW(deg_MW1){}
     void afficher(){
         std::cout << id << ": " << distance << ", " << pred << std::endl;
     }
@@ -81,15 +84,15 @@ void afficher_tab(std::vector<int> tab){
     std::cout << "]" << std::endl;
 }
 struct stat{
-    int deg_min;
-    int deg_max;
-    double deg_mean;
+    int min;
+    int max;
+    double mean;
     std::vector<int> hist;
-    stat(int deg_min1, int deg_max1, int deg_mean1, std::vector<int> hist_M1): deg_min(deg_min1), deg_max(deg_max1), deg_mean(deg_mean1), hist(hist_M1){}
+    stat(int deg_min1, int deg_max1, int deg_mean1, std::vector<int> hist_M1): min(deg_min1), max(deg_max1), mean(deg_mean1), hist(hist_M1){}
     void afficher(){
-        std::cout << "Deg min: " << deg_min << std::endl;
-        std::cout << "Deg max: " << deg_max << std::endl;
-        std::cout << "Deg mean: " << deg_mean << std::endl;
+        std::cout << "Min: " << min << std::endl;
+        std::cout << "Max: " << max << std::endl;
+        std::cout << "Mean: " << mean << std::endl;
         afficher_tab(hist);
     }
 };
@@ -186,15 +189,15 @@ bool dedans(size_t sigma, Column_chain &cc){
     }
     return result;
 }
-std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
+std::vector<Operation> connectedness(HDVF_type X1, HDVF_type X_prime1, int dim){
+    HDVF_type X(X1), X_prime(X_prime1);
+    std::cout << "---------------------DEBUT------------------" << std::endl;
     std::vector<Operation> result;
     int delta = distance(X, X_prime, dim);
-    std::cout << "Distance initiale: " << delta << std::endl;
     std::vector<std::vector<size_t>> misaligned_PSC = misaligned(X, X_prime, dim);
     std::vector<size_t> misaligned_P = misaligned_PSC[0], temp, temp1;
     std::vector<size_t> misaligned_S = misaligned_PSC[1];
     std::vector<size_t> misaligned_C = misaligned_PSC[2];
-
     bool trouve = false;
     size_t gamma, sigma, pi;
     while (delta > 0){
@@ -291,6 +294,7 @@ std::vector<Operation> connectedness(HDVF_type& X, HDVF_type& X_prime, int dim){
             }
         }
     }
+    std::cout << "---------------------FIN------------------" << std::endl;
     return result;
 }
 
@@ -314,10 +318,11 @@ HDVF_type operer(HDVF_type X1, Operation o){
 }
 
 
-void traiter(std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, Data>& map,  int dim, int& id){
+void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, Data>& map,  int dim, int& id){
+    
     HDVF_type X(a_traiter.front());
     bool found_M, found_W, found_MW;
-    int d, deg_M, deg_W, deg_MW;
+    int d, dc=0, deg_M, deg_W, deg_MW;
     std::vector<PSC_flag> flag_X, flag_X1;
     std::vector<Cell_pair> ops_M = X.find_pairs_M(dim, found_M);
     std::vector<Cell_pair> ops_W = X.find_pairs_W(dim, found_W);
@@ -329,18 +334,22 @@ void traiter(std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, D
         for(Cell_pair c: ops_M){
             Operation o(operations::M, c.sigma, c.tau, dim);
             HDVF_type X1(operer(X, o));
-            d = distance(X1, X, dim);
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
+            d = 1;
+            HDVF_type X_temp(X_origin);
+            HDVF_type X_temp1(X1);
+            //dc = connectedness(X_temp, X_temp1, dim).size();
             if(map.find(flag_X1) != map.end()){
                 if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
                     map.at(flag_X1).distance = d+map.at(flag_X).distance;
                     map.at(flag_X1).pred = map.at(flag_X).id;
+                    map.at(flag_X1).distance_connectedness = abs(map.at(flag_X1).distance-dc);
                 }
             }
             else{
                 id++;
-                Data D(id, d+map.at(flag_X).distance, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                Data D(id, d+map.at(flag_X).distance, abs(map.at(flag_X).distance-dc), map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                 map.insert({X1.psc_flags(dim), D});
                 a_traiter.push(X1);
             }
@@ -350,46 +359,55 @@ void traiter(std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, D
         for(Cell_pair c: ops_W){
             Operation o(operations::W, c.sigma, c.tau, c.dim);
             HDVF_type X1(operer(X, o));
-            d = distance(X1, X, dim);
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
+            d = 1;
+            HDVF_type X_temp(X_origin);
+            HDVF_type X_temp1(X1);
+            //dc = connectedness(X_temp, X_temp1, dim).size();
             if(map.find(flag_X1) != map.end()){
                 if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
                     map.at(flag_X1).distance = d+map.at(flag_X).distance;
                     map.at(flag_X1).pred = map.at(flag_X).id;
+                    map.at(flag_X1).distance_connectedness = abs(map.at(flag_X1).distance-dc);
                 }
             }
             else{
                 id++;
-                Data D(id, d+map.at(flag_X).distance, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                Data D(id, d+map.at(flag_X).distance, abs(map.at(flag_X).distance-dc), map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                 map.insert({X1.psc_flags(dim), D});
                 a_traiter.push(X1);
             }
         }
     }
+    
     if(found_MW){
         for(Cell_pair c: ops_MW){
             Operation o(operations::MW, c.sigma, c.tau, c.dim);
             HDVF_type X1(operer(X, o));
-            
-            d = distance(X1, X, dim);
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
+            d = 1;
+            HDVF_type X_temp(X_origin);
+            HDVF_type X_temp1(X1);
+            //dc = connectedness(X_temp, X_temp1, dim).size();
             if(map.find(flag_X1) != map.end()){
                 if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
                     map.at(flag_X1).distance = d+map.at(flag_X).distance;
                     map.at(flag_X1).pred = map.at(flag_X).id;
+                    map.at(flag_X1).distance_connectedness = abs(map.at(flag_X1).distance-dc);
                 }
             }
             else{
                 id++;
-                Data D(id, d+map.at(flag_X).distance, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                Data D(id, d+map.at(flag_X).distance, abs(map.at(flag_X).distance-dc), map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                 map.insert({X1.psc_flags(dim), D});
                 a_traiter.push(X1);
             }
         }
     }
     a_traiter.pop();
+    
 }
 
 std::map<std::vector<PSC_flag>, Data> flooding(HDVF_type X, int dim){
@@ -398,15 +416,15 @@ std::map<std::vector<PSC_flag>, Data> flooding(HDVF_type X, int dim){
     int id = 0;
     Operation O0(operations::NONE, 0, 0, dim);
     bool found;
-    Data D0(id, 0, 0, O0, X.find_pairs_M(dim, found).size(), X.find_pairs_W(dim, found).size(), X.find_pairs_MW(dim, found).size());
+    Data D0(id, 0, 0, 0, O0, X.find_pairs_M(dim, found).size(), X.find_pairs_W(dim, found).size(), X.find_pairs_MW(dim, found).size());
     map.insert({X.psc_flags(dim),D0});
     a_traiter.push(X);
     int limit = 0;
     while(!(a_traiter.empty())){
-        traiter(a_traiter, map, dim, id);
+        traiter(X, a_traiter, map, dim, id);
         limit++;
     }
-    std::cout << limit << std::endl;
+    std::cout << "Nombre de HDVFs: " << limit << std::endl;
     return map;
 }
 void afficher_map(std::map<std::vector<PSC_flag>, Data> map){
@@ -417,16 +435,17 @@ void afficher_map(std::map<std::vector<PSC_flag>, Data> map){
 
 std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
     std::vector<stat> result;
-    int nb_elt=0, somme_M=0, somme_W=0, somme_MW=0;
+    int nb_elt=0, somme_M=0, somme_W=0, somme_MW=0, somme_dc = 0, somme_dg = 0;
     int deg_min_M=10000, deg_max_M=0, deg_mean_M;
-    std::map<int, int> map_M;
     int deg_min_W=10000, deg_max_W=0, deg_mean_W;
-    std::map<int, int> map_W;
     int deg_min_MW=10000, deg_max_MW=0, deg_mean_MW;
-    std::map<int, int> map_MW;
-    std::vector<int> hist_M (500, 0);
-    std::vector<int> hist_W (500, 0);
-    std::vector<int> hist_MW (500, 0);
+    int dc_min=10000, dc_max=0, dc_mean;
+    int dg_min=10000, dg_max=0, dg_mean;
+    std::vector<int> hist_M (50, 0);
+    std::vector<int> hist_W (50, 0);
+    std::vector<int> hist_MW (50, 0);
+    std::vector<int> hist_dc(100, 0);
+    std::vector<int> hist_dg(100, 0);
     for(auto it=map.begin(); it!=map.end(); it++){
         Data d = it->second;
         if(d.deg_M < deg_min_M){
@@ -438,6 +457,9 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
         if(d.deg_MW < deg_min_MW){
             deg_min_MW = d.deg_MW;
         }
+        if(d.distance_connectedness < dc_min){
+            dc_min = d.distance_connectedness;
+        }
         ////////////////////////
         if(d.deg_M > deg_max_M){
             deg_max_M = d.deg_M;
@@ -448,24 +470,44 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
         if(d.deg_MW > deg_max_MW){
             deg_max_MW = d.deg_MW;
         }
+        /////////////////////////
+        if(d.deg_MW + d.deg_M + d.deg_W > dg_max){
+            dg_max = d.deg_MW + d.deg_M + d.deg_W;
+        }
+        if(d.deg_MW + d.deg_M + d.deg_W < dg_min){
+            dg_min = d.deg_MW + d.deg_M + d.deg_W;
+        }
+        /////////////////////////
+        if(d.distance_connectedness > dc_max){
+            dc_max = d.distance_connectedness;
+        }
         hist_M[d.deg_M] += 1;
         hist_W[d.deg_W] += 1;
         hist_MW[d.deg_MW] += 1;
-
+        hist_dg[d.deg_MW+d.deg_W+d.deg_M] += 1;
+        //hist_dc[d.distance_connectedness] += 1;
         somme_M += d.deg_M;
         somme_W += d.deg_W;
         somme_MW += d.deg_MW;
+        somme_dc += d.distance_connectedness;
+        somme_dg += d.deg_M + d.deg_W + d.deg_MW;
         nb_elt++;
     }
-    deg_mean_M = somme_M / nb_elt;
-    deg_mean_W = somme_W / nb_elt;
-    deg_mean_MW = somme_MW / nb_elt;
+    deg_mean_M = somme_M / (1.0 * nb_elt);
+    deg_mean_W = somme_W / (1.0 * nb_elt);
+    deg_mean_MW = somme_MW / (1.0 * nb_elt);
+    dg_mean = somme_dg / (1.0 * nb_elt);
+    dc_mean = somme_dc / (1.0 * nb_elt);
     stat stat_M(deg_min_M, deg_max_M, deg_mean_M, hist_M);
     stat stat_W(deg_min_W, deg_max_W, deg_mean_W, hist_W);
     stat stat_MW(deg_min_MW, deg_max_MW, deg_mean_MW, hist_MW);
+    stat stat_dc(dc_min, dc_max, dc_mean, hist_dc);
+    stat stat_dg(dg_min, dg_max, dg_mean, hist_dg);
     result.push_back(stat_M);
     result.push_back(stat_W);
     result.push_back(stat_MW);
+    result.push_back(stat_dc);
+    result.push_back(stat_dg);
     return result;
 }
 
@@ -473,22 +515,42 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
 int main(int argc, char ** argv){
 
     
-    std::string chemin = "data/three_triangles.off";
-    HDVF::Mesh_object_io<Traits> mesh ;
-    mesh.read_off(chemin);
+    std::string filename;
+    if (argc > 2) {
+        std::cerr << "usage: test_hdvf_persistence [off_file]" << std::endl;
+    }
+    else if (argc == 1) filename = "data/simp/three_triangles.simp" ;
+    else filename = argv[1] ;
 
+    HDVF::Mesh_object_io<Traits> simp;
+    simp.read_simp(filename);
     // Build simplicial chain complex
-    Complex complex(mesh);
+    Complex complex(simp);
 
 //    // Build empty HDVF
     HDVF_type hdvf(complex, HDVF::OPT_FULL, 1);
+    HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
     //HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
     hdvf.compute_perfect_hdvf();
+    //hdvf1.compute_rand_perfect_hdvf();
     //std::vector<Operation> ops = connectedness(hdvf, hdvf1, 1);
 
+    
     std::map<std::vector<PSC_flag>, Data> result = flooding(hdvf, 1);
     std::vector<stat> vec = stat_G(result);
     stat M = vec[0];
+    stat W = vec[1];
+    stat MW = vec[2];
+    stat DC = vec[3];
+    stat DG = vec[4];
+    std::cout << ">>>>>>>>>>>>>>>>Stat M<<<<<<<<<<<<<<<<<<" << std::endl;
     M.afficher();
+    std::cout << ">>>>>>>>>>>>>>>>Stat W<<<<<<<<<<<<<<<<<<" << std::endl;
+    W.afficher();
+    std::cout << ">>>>>>>>>>>>>>>>Stat MW<<<<<<<<<<<<<<<<<" << std::endl;
+    MW.afficher();
+    std::cout << ">>>>>>>>>>>>>>>>Stat DG<<<<<<<<<<<<<<<<<" << std::endl;
+    DG.afficher();
+    
     return 0;
 }
