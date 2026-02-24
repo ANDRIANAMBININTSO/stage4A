@@ -128,10 +128,10 @@ public:
             return out_stream ;
         }
 
-/** \brief Comparison operator.
- *
- * Compares with `other` `Persistence_interval` (for numerical stability, only integer `time_birth` and `time_death` are compared. Corresponding degrees are equal as soon as both `Persistence_interval` relate to the same filtration.
- */
+        /** \brief Comparison operator.
+         *
+         * Compares with `other` `Persistence_interval` (for numerical stability, only integer `time_birth` and `time_death` are compared. Corresponding degrees are equal as soon as both `Persistence_interval` relate to the same filtration.
+         */
         inline bool operator== (const Persistence_interval& other) const {
             return (time_birth == other.time_birth) &&
             (time_death == other.time_death);
@@ -227,6 +227,7 @@ private:
     using Base::find_pair_A;
     using Base::find_pairs_A;
     using Base::A;
+
 public:
     /**
      * \brief Hdvf_persistence default constructor
@@ -246,7 +247,7 @@ public:
      * \brief Computes a perfect persistent HDVF.
      *
      * This method follows the filtration and considers cells one by one. For each of them, it searches the youngest possible cell valid for A (returned by `find_pair_A()`), and applies the corresponding `A()` operation.
-     * By definition of persistent homology, the `IntegralDomainWithoutDivision` of coefficients *must be* a field.
+     * By definition of persistent homology, the `IntegralDomainWithoutDivision` of coefficients *must be* a `Field`.
      *
      * If `dimension_restriction` is a positive parameter (in the HDVF), then persistence is computed only in dimension `dimension_restriction`.
      *
@@ -353,7 +354,7 @@ public:
      *
      * \param out Reference to an output stream.
      */
-    std::ostream& print_hdvf_persistence_information (std::ostream& out)
+    std::ostream& print_hdvf_persistence_information (std::ostream& out) const
     {
         out << "Filtration: " << _f << std::endl ;
         out << "_K_to_per and _per_to_K" << std::endl ;
@@ -372,7 +373,7 @@ public:
 
 
     /**
-     * \brief Exports primary/secondary/critical labels (e.g.\ for vtk export).
+     * \brief Exports primary/secondary/critical labels to integers (e.g.\ for vtk export).
      *
      * The method exports the labels of every cell in each dimension.
      * Encoding used:
@@ -380,7 +381,7 @@ public:
      * - `SECONDARY`: +1
      * - `CRITICAL`: 0
      *
-     * \returns A vector containing, for each dimension, the vector of labels by cell index.
+     * \returns A vector containing, for each dimension, the vector of integers encoding labels by cell index.
      */
     std::vector<std::vector<int> > psc_labels () const
     {
@@ -414,8 +415,6 @@ public:
      * The method exports the chain \f$g(\sigma)\f$ for \f$\sigma\f$ the cell of index `cell_index` and dimension `q`.
      *
      * \returns A column-major chain.
-     *
-     * \exception Invalid_hdvf_option If the HDVF option is neither `OPT_FULL` nor `OPT_G` raises a `%std::runtime_error`.
      */
     Column_chain homology_chain (size_t cell_index, int q) const
     {
@@ -451,8 +450,6 @@ public:
      */
     Column_chain cohomology_chain (size_t cell_index, int q) const
     {
-        CGAL_precondition(this->_K.is_valid_cell(cell_index, q));
-
         if (this->_hdvf_opt & (OPT_FULL | OPT_F))
         {
             // Get fstar(cell, dim) with per indices
@@ -572,7 +569,7 @@ public:
 
     private:
         size_t _i ; // Index along _persist
-        const Hdvf_persistence& _per_hdvf ; // per_hdvf iterated
+        const Hdvf_persistence& _per_hdvf ; // reference to the Hdvf_persistence iterated
         const bool _discard_small ;
     };
 
@@ -607,6 +604,8 @@ public:
      * Writes a HDVF to a file in `hdvf` file format (a simple text file format, see for a specification).
      *
      * \param filename Output file name.
+     *
+     * \exception File_not_found If the file `filename` cannot be opened, raises a `%std::runtime_error`.
      */
     void write_hdvf_reduction(std::string filename) const {
         std::ofstream out_file ( filename, std::ios::out | std::ios::trunc);
@@ -636,6 +635,8 @@ public:
      * \warning The underlying complex is not stored in the file!
      *
      * \param filename Input file name.
+     *
+     * \exception File_not_found If the file `filename` cannot be opened, raises a `%std::runtime_error`.
      */
     void read_hdvf_reduction(std::string filename) {
         std::ifstream in_file (filename);
@@ -941,8 +942,10 @@ std::ostream& operator<< (std::ostream& out_stream, const typename Hdvf_persiste
 // Save HDVF and reduction
 template<typename ChainComplex, typename Degree, typename Filtration_ >
 std::ostream& Hdvf_persistence<ChainComplex, Degree, Filtration_>::write_hdvf_reduction(std::ostream& out) const {
-    // Call parent method
-    Base::write_hdvf_reduction(out);
+    // Write HDVF prefix type
+    out << "#HDVF_persistence" << std::endl;
+    // Call parent method main code
+    Base::write_hdvf_reduction_main(out);
     // Write persistence data
     // ---- with export
     out << _with_export << std::endl;
@@ -1000,8 +1003,19 @@ std::ostream& Hdvf_persistence<ChainComplex, Degree, Filtration_>::write_hdvf_re
 // Save HDVF and reduction
 template<typename ChainComplex, typename Degree, typename Filtration_ >
 std::istream& Hdvf_persistence<ChainComplex, Degree, Filtration_>::read_hdvf_reduction(std::istream& in) {
+    // Load and check HDVF prefix
+    // For Hdvf_core:       #HDVF_core
+    // For Hdvf_persistence:       #HDVF_persistence
+    // For Hdvf_duality:       #HDVF_duality
+    std::string prefix;
+    in >> prefix;
+    if (prefix.compare("#HDVF_persistence")) {
+        std::cerr << "try to load a HDVF with incompatible prefix" << std::endl ;
+        throw (std::runtime_error("try to load a HDVF with incompatible prefix"));
+    }
+
     // Call parent method
-    Hdvf_core<ChainComplex, OSM::Sparse_chain, OSM::Sub_sparse_matrix>::read_hdvf_reduction(in);
+    Hdvf_core<ChainComplex, OSM::Sparse_chain, OSM::Sub_sparse_matrix>::read_hdvf_reduction_main(in);
     // Write persistence data
     // ---- with export
     in >> _with_export;
