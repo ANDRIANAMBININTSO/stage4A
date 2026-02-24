@@ -25,8 +25,8 @@
 namespace HDVF = CGAL::Homological_discrete_vector_field;
 
 //typedef int Coefficient_ring;
-//typedef CGAL::Z2 Coefficient_ring;
-typedef CGAL::Zp<5, char, true> Coefficient_ring;
+typedef CGAL::Z2 Coefficient_ring;
+//typedef CGAL::Zp<5, char, true> Coefficient_ring;
 typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::COLUMN> Column_chain;
 typedef CGAL::OSM::Sparse_matrix<Coefficient_ring, CGAL::OSM::COLUMN> Column_matrix;
 typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::ROW> Row_chain;
@@ -189,7 +189,7 @@ bool dedans(size_t sigma, Column_chain &cc){
     }
     return result;
 }
-std::vector<Operation> connectedness(HDVF_type X1, HDVF_type X_prime1, int dim){
+std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim){
     HDVF_type X(X1), X_prime(X_prime1);
     std::cout << "---------------------DEBUT------------------" << std::endl;
     std::vector<Operation> result;
@@ -222,15 +222,16 @@ std::vector<Operation> connectedness(HDVF_type X1, HDVF_type X_prime1, int dim){
                     supprimer(sigma, misaligned_S);
                     delta-=2;
                 }
+                std::cout << "Cas W1:" << std::endl;
                 X.W(sigma, gamma, dim);
                 Operation op(operations::W, sigma, gamma, dim);
                 result.push_back(op);
             }
             else{
                 const Row_chain& f_etoile_gamma(CGAL::OSM::cget_row(X.matrix_f(dim), gamma));
-                std::cout << f_etoile_gamma << std::endl;
                 for(Row_chain::const_iterator it = f_etoile_gamma.begin(); it != f_etoile_gamma.end(); ++it){
                     if(X_prime.psc_flag(it->first, dim) != PSC_flag::PRIMARY){
+                        std::cout << "bisous" << std::endl;
                         pi = it->first;
                         break;
                     }
@@ -246,6 +247,7 @@ std::vector<Operation> connectedness(HDVF_type X1, HDVF_type X_prime1, int dim){
                     supprimer(pi, misaligned_P);
                     delta-=2;
                 }
+                std::cout << "Cas M1:" << std::endl;
                 X.M(pi, gamma, dim);
                 Operation op(operations::M, pi, gamma, dim);
                 result.push_back(op);
@@ -269,6 +271,7 @@ std::vector<Operation> connectedness(HDVF_type X1, HDVF_type X_prime1, int dim){
                 }
             }
             if(trouve){
+                std::cout << "Cas MW1:" << std::endl;
                 X.MW(pi, sigma, dim);
                 delta -= 6;
                 supprimer(pi, misaligned_P);
@@ -277,13 +280,15 @@ std::vector<Operation> connectedness(HDVF_type X1, HDVF_type X_prime1, int dim){
                 result.push_back(op);
             }
             else{
-                const Row_chain& f_pi(CGAL::OSM::cget_row(X.matrix_f(dim), pi));
-                for(Row_chain::const_iterator it = f_pi.begin(); it != f_pi.end(); ++it){
-                    if(X.is_valid_pair_for_M(it->first, gamma, dim)){
-                        pi = it->first;
+                Column_chain f_pi(CGAL::OSM::get_column(X.matrix_f(dim), pi));
+                for(Column_chain::const_iterator it = f_pi.begin(); it != f_pi.end(); ++it){
+                    if(X.is_valid_pair_for_M(pi, it->first, dim)){
+                        gamma = it->first;
+                        std::cout << "bisous" << std::endl;
                         break;
                     }
                 }
+                std::cout << "Cas M2:" << std::endl;
                 X.M(pi, gamma, dim);
                 delta -= 1;
                 supprimer(pi, misaligned_P);
@@ -337,9 +342,7 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
             d = 1;
-            HDVF_type X_temp(X_origin);
-            HDVF_type X_temp1(X1);
-            //dc = connectedness(X_temp, X_temp1, dim).size();
+            dc = connectedness(X_origin, X1, dim).size();
             if(map.find(flag_X1) != map.end()){
                 if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
                     map.at(flag_X1).distance = d+map.at(flag_X).distance;
@@ -362,9 +365,7 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
             d = 1;
-            HDVF_type X_temp(X_origin);
-            HDVF_type X_temp1(X1);
-            //dc = connectedness(X_temp, X_temp1, dim).size();
+            dc = connectedness(X_origin, X1, dim).size();
             if(map.find(flag_X1) != map.end()){
                 if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
                     map.at(flag_X1).distance = d+map.at(flag_X).distance;
@@ -388,9 +389,7 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
             d = 1;
-            HDVF_type X_temp(X_origin);
-            HDVF_type X_temp1(X1);
-            //dc = connectedness(X_temp, X_temp1, dim).size();
+            dc = connectedness(X_origin, X1, dim).size();
             if(map.find(flag_X1) != map.end()){
                 if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
                     map.at(flag_X1).distance = d+map.at(flag_X).distance;
@@ -485,7 +484,7 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
         hist_W[d.deg_W] += 1;
         hist_MW[d.deg_MW] += 1;
         hist_dg[d.deg_MW+d.deg_W+d.deg_M] += 1;
-        //hist_dc[d.distance_connectedness] += 1;
+        hist_dc[d.distance_connectedness] += 1;
         somme_M += d.deg_M;
         somme_W += d.deg_W;
         somme_MW += d.deg_MW;
@@ -531,7 +530,7 @@ int main(int argc, char ** argv){
     HDVF_type hdvf(complex, HDVF::OPT_FULL, 1);
     HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
     //HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
-    hdvf.compute_perfect_hdvf();
+    hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
     //hdvf1.compute_rand_perfect_hdvf();
     //std::vector<Operation> ops = connectedness(hdvf, hdvf1, 1);
 
@@ -549,6 +548,8 @@ int main(int argc, char ** argv){
     W.afficher();
     std::cout << ">>>>>>>>>>>>>>>>Stat MW<<<<<<<<<<<<<<<<<" << std::endl;
     MW.afficher();
+    std::cout << ">>>>>>>>>>>>>>>>Stat DC<<<<<<<<<<<<<<<<<" << std::endl;
+    DC.afficher();
     std::cout << ">>>>>>>>>>>>>>>>Stat DG<<<<<<<<<<<<<<<<<" << std::endl;
     DG.afficher();
     
