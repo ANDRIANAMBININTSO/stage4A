@@ -25,8 +25,8 @@
 namespace HDVF = CGAL::Homological_discrete_vector_field;
 
 //typedef int Coefficient_ring;
-typedef CGAL::Z2 Coefficient_ring;
-//typedef CGAL::Zp<5, char, true> Coefficient_ring;
+//typedef CGAL::Z2 Coefficient_ring;
+typedef CGAL::Zp<5, char, true> Coefficient_ring;
 typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::COLUMN> Column_chain;
 typedef CGAL::OSM::Sparse_matrix<Coefficient_ring, CGAL::OSM::COLUMN> Column_matrix;
 typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::ROW> Row_chain;
@@ -527,10 +527,10 @@ int main(int argc, char ** argv){
     Complex complex(simp);
 
 //    // Build empty HDVF
-    HDVF_type hdvf(complex, HDVF::OPT_FULL, 1);
-    HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
-    //HDVF_type hdvf1(complex, HDVF::OPT_FULL, 1);
-    hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
+    HDVF_type hdvf(complex, HDVF::OPT_FULL);
+    hdvf.compute_perfect_hdvf();
+    hdvf.write_hdvf_reduction("tmp/hdvf.hvdf");
+    //hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
     //hdvf1.compute_rand_perfect_hdvf();
     //std::vector<Operation> ops = connectedness(hdvf, hdvf1, 1);
 
