@@ -47,7 +47,7 @@ public:
     /** \brief Type of the argument Sparse_matrix. */
     typedef SparseMatrix Sparse_matrix;
     /** \brief Type of underlying coefficient ring. */
-    typedef Sparse_matrix::Coefficient_ring Coefficient_ring;
+    typedef typename Sparse_matrix::Coefficient_ring Coefficient_ring;
 
 protected:
     /* \brief Type of row matrices used internally. */
@@ -248,7 +248,7 @@ public:
      * \param nrows Number of rows of the matrix.
      * \param ncols Number of columns of the matrix.
      */
-    void eye (size_t nrows, size_t  ncols) {
+    Sparse_matrix eye (size_t nrows, size_t  ncols) {
         *this = Sparse_matrix(nrows, ncols);
         size_t nmin((nrows< ncols)?nrows:ncols);
         Sparse_matrix res(nrows, ncols);

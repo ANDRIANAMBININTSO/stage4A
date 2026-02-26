@@ -205,11 +205,17 @@ std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim
             gamma = misaligned_C[0];
             if(X_prime.psc_flag(gamma, dim)==PSC_flag::SECONDARY){
                 const Column_chain& g_gamma(CGAL::OSM::cget_column(X.matrix_g(dim), gamma));
-                for(Column_chain::const_iterator it = g_gamma.begin(); it != g_gamma.end(); ++it){
+                Column_chain::const_iterator it = g_gamma.begin();
+                trouve = false;
+                while(it != g_gamma.end() && !(trouve)){
                     if(X_prime.psc_flag(it->first, dim) != PSC_flag::SECONDARY){
                         sigma = it->first;
-                        break;
+                        trouve = true;
                     }
+                    it++;
+                }
+                if(!trouve){
+                    std::cerr << "On n'a pas trouvé de sigma" << std::endl;
                 }
                 if(X_prime.psc_flag(sigma, dim) == PSC_flag::PRIMARY){
                     supprimer(gamma, misaligned_C);
@@ -222,19 +228,23 @@ std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim
                     supprimer(sigma, misaligned_S);
                     delta-=2;
                 }
-                std::cout << "Cas W1:" << std::endl;
                 X.W(sigma, gamma, dim);
                 Operation op(operations::W, sigma, gamma, dim);
                 result.push_back(op);
             }
             else{
                 const Row_chain& f_etoile_gamma(CGAL::OSM::cget_row(X.matrix_f(dim), gamma));
-                for(Row_chain::const_iterator it = f_etoile_gamma.begin(); it != f_etoile_gamma.end(); ++it){
+                Row_chain::const_iterator it = f_etoile_gamma.begin();
+                trouve = false;
+                while (it != f_etoile_gamma.end() && !trouve){
                     if(X_prime.psc_flag(it->first, dim) != PSC_flag::PRIMARY){
-                        std::cout << "bisous" << std::endl;
                         pi = it->first;
-                        break;
+                        trouve = true;
                     }
+                    it++;
+                }
+                if(!trouve){
+                    std::cerr << "On n'a pas trouvé de pi" << std::endl;
                 }
                 if(X_prime.psc_flag(pi, dim) == PSC_flag::SECONDARY){
                     supprimer(gamma, misaligned_C);
@@ -247,7 +257,6 @@ std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim
                     supprimer(pi, misaligned_P);
                     delta-=2;
                 }
-                std::cout << "Cas M1:" << std::endl;
                 X.M(pi, gamma, dim);
                 Operation op(operations::M, pi, gamma, dim);
                 result.push_back(op);
@@ -257,21 +266,21 @@ std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim
             assert(misaligned_P.size()>0);
             pi = misaligned_P[0];
             temp = X.psc_flags(PSC_flag::SECONDARY, dim);
-            trouve = false;
             for(int i=0; i<temp.size();i++){
                 if(X_prime.psc_flag(temp[i], dim)==PSC_flag::PRIMARY){
                     temp1.push_back(temp[i]);
                 }
             }
-            for(int i=0; i<temp1.size();i++){
+            int i = 0;
+            trouve = false;
+            while(i<temp1.size() && !trouve){
                 if(X.is_valid_pair_for_MW(pi, temp1[i], dim)){
                     sigma = temp1[i];
                     trouve = true;
-                    break;
                 }
+                i++;
             }
             if(trouve){
-                std::cout << "Cas MW1:" << std::endl;
                 X.MW(pi, sigma, dim);
                 delta -= 6;
                 supprimer(pi, misaligned_P);
@@ -281,14 +290,17 @@ std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim
             }
             else{
                 Column_chain f_pi(CGAL::OSM::get_column(X.matrix_f(dim), pi));
-                for(Column_chain::const_iterator it = f_pi.begin(); it != f_pi.end(); ++it){
+                Column_chain::const_iterator it = f_pi.begin();
+                trouve = false;
+                while(it != f_pi.end() && !trouve){
                     if(X.is_valid_pair_for_M(pi, it->first, dim)){
                         gamma = it->first;
-                        std::cout << "bisous" << std::endl;
-                        break;
                     }
+                    it++;
                 }
-                std::cout << "Cas M2:" << std::endl;
+                if(!trouve){
+                    std::cerr << "On n'a pas trouvé de gamma" << std::endl;
+                }
                 X.M(pi, gamma, dim);
                 delta -= 1;
                 supprimer(pi, misaligned_P);
@@ -327,7 +339,7 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
     
     HDVF_type X(a_traiter.front());
     bool found_M, found_W, found_MW;
-    int d, dc=0, deg_M, deg_W, deg_MW;
+    int deg_M, deg_W, deg_MW;
     std::vector<PSC_flag> flag_X, flag_X1;
     std::vector<Cell_pair> ops_M = X.find_pairs_M(dim, found_M);
     std::vector<Cell_pair> ops_W = X.find_pairs_W(dim, found_W);
@@ -341,18 +353,15 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
             HDVF_type X1(operer(X, o));
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
-            d = 1;
-            dc = connectedness(X_origin, X1, dim).size();
             if(map.find(flag_X1) != map.end()){
-                if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
-                    map.at(flag_X1).distance = d+map.at(flag_X).distance;
+                if((map.at(flag_X1).distance)>(1+map.at(flag_X).distance)){
+                    map.at(flag_X1).distance = 1+map.at(flag_X).distance;
                     map.at(flag_X1).pred = map.at(flag_X).id;
-                    map.at(flag_X1).distance_connectedness = abs(map.at(flag_X1).distance-dc);
                 }
             }
             else{
                 id++;
-                Data D(id, d+map.at(flag_X).distance, abs(map.at(flag_X).distance-dc), map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                 map.insert({X1.psc_flags(dim), D});
                 a_traiter.push(X1);
             }
@@ -364,18 +373,15 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
             HDVF_type X1(operer(X, o));
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
-            d = 1;
-            dc = connectedness(X_origin, X1, dim).size();
             if(map.find(flag_X1) != map.end()){
-                if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
-                    map.at(flag_X1).distance = d+map.at(flag_X).distance;
+                if((map.at(flag_X1).distance)>(1+map.at(flag_X).distance)){
+                    map.at(flag_X1).distance = 1+map.at(flag_X).distance;
                     map.at(flag_X1).pred = map.at(flag_X).id;
-                    map.at(flag_X1).distance_connectedness = abs(map.at(flag_X1).distance-dc);
                 }
             }
             else{
                 id++;
-                Data D(id, d+map.at(flag_X).distance, abs(map.at(flag_X).distance-dc), map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                 map.insert({X1.psc_flags(dim), D});
                 a_traiter.push(X1);
             }
@@ -388,24 +394,21 @@ void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std
             HDVF_type X1(operer(X, o));
             flag_X = X.psc_flags(dim);
             flag_X1 = X1.psc_flags(dim);
-            d = 1;
-            dc = connectedness(X_origin, X1, dim).size();
             if(map.find(flag_X1) != map.end()){
-                if((map.at(flag_X1).distance)>(d+map.at(flag_X).distance)){
-                    map.at(flag_X1).distance = d+map.at(flag_X).distance;
+                if((map.at(flag_X1).distance)>(1+map.at(flag_X).distance)){
+                    map.at(flag_X1).distance = 1+map.at(flag_X).distance;
                     map.at(flag_X1).pred = map.at(flag_X).id;
-                    map.at(flag_X1).distance_connectedness = abs(map.at(flag_X1).distance-dc);
                 }
             }
             else{
                 id++;
-                Data D(id, d+map.at(flag_X).distance, abs(map.at(flag_X).distance-dc), map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                 map.insert({X1.psc_flags(dim), D});
                 a_traiter.push(X1);
             }
         }
     }
-    a_traiter.pop();
+    
     
 }
 
@@ -419,8 +422,13 @@ std::map<std::vector<PSC_flag>, Data> flooding(HDVF_type X, int dim){
     map.insert({X.psc_flags(dim),D0});
     a_traiter.push(X);
     int limit = 0;
+    size_t cpt(0);
     while(!(a_traiter.empty())){
+        std::cout << cpt++ << "===================" << std::endl;
         traiter(X, a_traiter, map, dim, id);
+        std::vector<PSC_flag> vec = a_traiter.front().psc_flags(dim);
+        map.at(vec).distance_connectedness = connectedness(X, a_traiter.front(), dim).size();
+        a_traiter.pop();
         limit++;
     }
     std::cout << "Nombre de HDVFs: " << limit << std::endl;
@@ -456,9 +464,7 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
         if(d.deg_MW < deg_min_MW){
             deg_min_MW = d.deg_MW;
         }
-        if(d.distance_connectedness < dc_min){
-            dc_min = d.distance_connectedness;
-        }
+        
         ////////////////////////
         if(d.deg_M > deg_max_M){
             deg_max_M = d.deg_M;
@@ -477,18 +483,21 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
             dg_min = d.deg_MW + d.deg_M + d.deg_W;
         }
         /////////////////////////
-        if(d.distance_connectedness > dc_max){
-            dc_max = d.distance_connectedness;
+        if(abs(d.distance_connectedness-d.distance) < dc_min){
+            dc_min = abs(d.distance_connectedness-d.distance);
+        }
+        if(abs(d.distance_connectedness-d.distance) > dc_max){
+            dc_max = abs(d.distance_connectedness-d.distance);
         }
         hist_M[d.deg_M] += 1;
         hist_W[d.deg_W] += 1;
         hist_MW[d.deg_MW] += 1;
         hist_dg[d.deg_MW+d.deg_W+d.deg_M] += 1;
-        hist_dc[d.distance_connectedness] += 1;
+        hist_dc[abs(d.distance_connectedness-d.distance)] += 1;
         somme_M += d.deg_M;
         somme_W += d.deg_W;
         somme_MW += d.deg_MW;
-        somme_dc += d.distance_connectedness;
+        somme_dc += abs(d.distance_connectedness-d.distance);
         somme_dg += d.deg_M + d.deg_W + d.deg_MW;
         nb_elt++;
     }
@@ -510,31 +519,15 @@ std::vector<stat> stat_G(std::map<std::vector<PSC_flag>, Data>& map){
     return result;
 }
 
-
-int main(int argc, char ** argv){
-
+void compute_stat(std::string& filename){
     
-    std::string filename;
-    if (argc > 2) {
-        std::cerr << "usage: test_hdvf_persistence [off_file]" << std::endl;
-    }
-    else if (argc == 1) filename = "data/simp/three_triangles.simp" ;
-    else filename = argv[1] ;
-
     HDVF::Mesh_object_io<Traits> simp;
     simp.read_simp(filename);
-    // Build simplicial chain complex
     Complex complex(simp);
-
-//    // Build empty HDVF
     HDVF_type hdvf(complex, HDVF::OPT_FULL);
     hdvf.compute_perfect_hdvf();
-    hdvf.write_hdvf_reduction("tmp/hdvf.hvdf");
-    //hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
-    //hdvf1.compute_rand_perfect_hdvf();
-    //std::vector<Operation> ops = connectedness(hdvf, hdvf1, 1);
-
-    
+    //hdvf.write_hdvf_reduction("tmp/hdvf.hvdf");
+    //hdvf.read_hdvf_reduction("./tmp/hdvf.hvdf");
     std::map<std::vector<PSC_flag>, Data> result = flooding(hdvf, 1);
     std::vector<stat> vec = stat_G(result);
     stat M = vec[0];
@@ -542,6 +535,7 @@ int main(int argc, char ** argv){
     stat MW = vec[2];
     stat DC = vec[3];
     stat DG = vec[4];
+    std::cout << "#######################" << filename << "#######################" << std::endl;
     std::cout << ">>>>>>>>>>>>>>>>Stat M<<<<<<<<<<<<<<<<<<" << std::endl;
     M.afficher();
     std::cout << ">>>>>>>>>>>>>>>>Stat W<<<<<<<<<<<<<<<<<<" << std::endl;
@@ -552,6 +546,42 @@ int main(int argc, char ** argv){
     DC.afficher();
     std::cout << ">>>>>>>>>>>>>>>>Stat DG<<<<<<<<<<<<<<<<<" << std::endl;
     DG.afficher();
+}
+
+int main(int argc, char ** argv){
+
+    
+    std::string filename;
+    if (argc > 2) {
+        std::cerr << "usage: test_hdvf_persistence [off_file]" << std::endl;
+    }
+    else if (argc == 2) {
+        filename = argv[1]; 
+        compute_stat(filename) ;
+    }
+    else {
+        std::vector<std::string> tab;
+        tab.push_back("data/simp/three_triangles.simp");
+        tab.push_back("data/simp/three_triangles_d.simp");
+        tab.push_back("data/simp/three_triangles_1.simp");
+        tab.push_back("data/simp/three_triangles_inv.simp");
+        tab.push_back("data/simp/three_triangles_f.simp");
+        tab.push_back("data/simp/three_triangles_2.simp");
+        tab.push_back("data/simp/three_triangles_3.simp");
+        tab.push_back("data/simp/six_triangles_s.simp");
+        tab.push_back("data/simp/six_triangles_cs.simp");
+        tab.push_back("data/simp/six_triangles_cc.simp");
+        tab.push_back("data/simp/six_triangles_ss.simp");
+        tab.push_back("data/simp/six_triangles_ss_inv.simp");
+        tab.push_back("data/simp/six_triangles.simp");
+        for (std::string filename: tab){
+            compute_stat(filename);
+        }
+    }
+
+
+
+
     
     return 0;
 }
