@@ -115,9 +115,9 @@ protected:
 public:
     Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file) {
         HDVF_type hdvf(complex, HDVF::OPT_FULL);
-        hdvf.compute_perfect_hdvf();
-        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
-//        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
+//        hdvf.compute_perfect_hdvf();
+//        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
+        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
         hdvf.write_flags();
         hdvf.write_matrices();
         std::cout << "###################" << std::endl;
@@ -238,6 +238,8 @@ public:
         std::cout << "---------------------DEBUT------------------" << std::endl;
         std::cout << "X " << map.at(X1.psc_flags(1)).id << std::endl;
         std::cout << "Xprime " << map.at(X_prime1.psc_flags(1)).id << std::endl;
+        X_prime1.write_flags();
+        X_prime1.write_matrices();
         std::vector<Operation> result;
         int delta = distance(X, X_prime, dim);
         std::vector<std::vector<size_t>> misaligned_PSC = misaligned(X, X_prime, dim);
@@ -414,6 +416,9 @@ public:
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
+                    std::cout << "X " << map.at(flag_X).id << "-M(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+                    X1.write_flags();
+                    X1.write_matrices();
                 }
             }
         }
@@ -434,6 +439,9 @@ public:
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
+                    std::cout << "X " << map.at(flag_X).id << "-W(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+                    X1.write_flags();
+                    X1.write_matrices();
                 }
             }
         }
@@ -455,6 +463,9 @@ public:
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
+                    std::cout << "X " << map.at(flag_X).id << "-MW(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+                    X1.write_flags();
+                    X1.write_matrices();
                 }
             }
         }
@@ -576,6 +587,7 @@ void compute_stat(std::string& filename){
     HDVF::Mesh_object_io<Traits> simp;
     simp.read_simp(filename);
     Chain_complex complex(simp);
+    std::cout << complex << std::endl;
     Hdvf_space<HDVF_type> hs(complex, filename);
 }
 

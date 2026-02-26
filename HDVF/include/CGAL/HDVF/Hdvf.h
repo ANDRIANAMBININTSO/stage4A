@@ -462,7 +462,7 @@ public:
      * \param q Cell dimension.
      */
 
-    Column_chain z(size_t sigma, int q) {
+    Column_chain z(size_t sigma, int q) const {
         CGAL_precondition(this->_K.is_valid_cell(sigma, q));
         Column_chain res(this->_K.number_of_cells(q));
 
@@ -499,7 +499,7 @@ public:
      * \param q Cell dimension.
      */
 
-    Column_chain co_z(size_t sigma, int q) {
+    Column_chain co_z(size_t sigma, int q) const {
         CGAL_precondition(this->_K.is_valid_cell(sigma, q));
         Row_chain res(this->_K.number_of_cells(q));
 
@@ -1155,6 +1155,8 @@ std::vector<Cell_pair> Hdvf<ChainComplex>::find_pairs_MW(int q, bool &found) con
                         p.tau = sigma ; // secondary cell
                         p.dim = q ;
                         pairs.push_back(p) ;
+                        std::cout << "P " << p.sigma << " - Z_1: " << z(p.sigma,1) << std::endl;
+                        std::cout << "S " << p.tau << " - Z^1: " << co_z(p.tau,1) << std::endl;
                     }
                 }
             }
