@@ -119,6 +119,9 @@ public:
         hdvf.compute_perfect_hdvf();
         hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
 //        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
+        hdvf.write_flags();
+        hdvf.write_matrices();
+        std::cout << "###################" << std::endl;
         flooding(hdvf, 1);
         std::vector<stat> vec = stat_G();
         stat M = vec[0];
@@ -234,6 +237,10 @@ public:
     std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim){
         HDVF_type X(X1), X_prime(X_prime1);
         std::cout << "---------------------DEBUT------------------" << std::endl;
+        std::cout << "X " << map.at(X1.psc_flags(1)).id << std::endl;
+        std::cout << "Xprime " << map.at(X_prime1.psc_flags(1)).id << std::endl;
+        X_prime1.write_flags();
+        X_prime1.write_matrices();
         std::vector<Operation> result;
         int delta = distance(X, X_prime, dim);
         std::vector<std::vector<size_t>> misaligned_PSC = misaligned(X, X_prime, dim);
@@ -258,7 +265,6 @@ public:
                     }
                     if(!trouve){
                         std::cerr << "On n'a pas trouvé de sigma" << std::endl;
-                        throw(std::runtime_error("On n'a pas trouvé de sigma"));
                     }
                     if(X_prime.psc_flag(sigma, dim) == PSC_flag::PRIMARY){
                         supprimer(gamma, misaligned_C);
@@ -288,7 +294,6 @@ public:
                     }
                     if(!trouve){
                         std::cerr << "On n'a pas trouvé de pi" << std::endl;
-                        throw(std::runtime_error("On n'a pas trouvé de pi"));
                     }
                     if(X_prime.psc_flag(pi, dim) == PSC_flag::SECONDARY){
                         supprimer(gamma, misaligned_C);
@@ -344,6 +349,9 @@ public:
                     }
                     if(!trouve){
                         std::cerr << "On n'a pas trouvé de gamma" << std::endl;
+                        std::cout << "X" << map.at(X.psc_flags(1)).id << std::endl;
+                        X.write_flags();
+                        X.write_matrices();
                         throw std::runtime_error("On n'a pas trouvé de gamma");
                     }
                     X.M(pi, gamma, dim);
@@ -396,6 +404,22 @@ public:
             for(Cell_pair c: ops_M){
                 Operation o(operations::M, c.sigma, c.tau, dim);
                 HDVF_type X1(operer(X, o));
+#ifdef DEBUG
+                {
+                    // Build a HDVF from flags
+                    HDVF_type Xtmp(X1.complex(), X1.psc_flags(), HDVF::OPT_FULL);
+                    bool compare(X1 == Xtmp);
+                    if (!compare) {
+                        std::cout << "Error on HDVF after M" << std::endl << "-> X1: " << std::endl;
+                        X1.write_flags();
+                        X1.write_matrices();
+                        std::cout << "-> Xtmp: " << std::endl;
+                        Xtmp.write_flags();
+                        Xtmp.write_matrices();
+                        assert(compare);
+                    }
+                }
+#endif
                 flag_X = X.psc_flags(dim);
                 flag_X1 = X1.psc_flags(dim);
                 if(map.find(flag_X1) != map.end()){
@@ -410,6 +434,8 @@ public:
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
                     std::cout << "X " << map.at(flag_X).id << "-M(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+                    X1.write_flags();
+                    X1.write_matrices();
                 }
             }
         }
@@ -417,6 +443,21 @@ public:
             for(Cell_pair c: ops_W){
                 Operation o(operations::W, c.sigma, c.tau, c.dim);
                 HDVF_type X1(operer(X, o));
+#ifdef DEBUG
+                {
+                    HDVF_type Xtmp(X1.complex(), X1.psc_flags(), HDVF::OPT_FULL);
+                    bool compare(X1 == Xtmp);
+                    if (!compare) {
+                        std::cout << "Error on HDVF after W" << std::endl << "-> X1: " << std::endl;
+                        X1.write_flags();
+                        X1.write_matrices();
+                        std::cout << "-> Xtmp: " << std::endl;
+                        Xtmp.write_flags();
+                        Xtmp.write_matrices();
+                        assert(compare);
+                    }
+                }
+#endif
                 flag_X = X.psc_flags(dim);
                 flag_X1 = X1.psc_flags(dim);
                 if(map.find(flag_X1) != map.end()){
@@ -431,6 +472,8 @@ public:
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
                     std::cout << "X " << map.at(flag_X).id << "-W(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+                    X1.write_flags();
+                    X1.write_matrices();
                 }
             }
         }
@@ -439,6 +482,21 @@ public:
             for(Cell_pair c: ops_MW){
                 Operation o(operations::MW, c.sigma, c.tau, c.dim);
                 HDVF_type X1(operer(X, o));
+#ifdef DEBUG
+                {
+                    HDVF_type Xtmp(X1.complex(), X1.psc_flags(), HDVF::OPT_FULL);
+                    bool compare(X1 == Xtmp);
+                    if (!compare) {
+                        std::cout << "Error on HDVF after MW" << std::endl << "-> X1: " << std::endl;
+                        X1.write_flags();
+                        X1.write_matrices();
+                        std::cout << "-> Xtmp: " << std::endl;
+                        Xtmp.write_flags();
+                        Xtmp.write_matrices();
+                        assert(compare);
+                    }
+                }
+#endif
                 flag_X = X.psc_flags(dim);
                 flag_X1 = X1.psc_flags(dim);
                 if(map.find(flag_X1) != map.end()){
@@ -453,6 +511,8 @@ public:
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
                     std::cout << "X " << map.at(flag_X).id << "-MW(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+                    X1.write_flags();
+                    X1.write_matrices();
                 }
             }
         }
