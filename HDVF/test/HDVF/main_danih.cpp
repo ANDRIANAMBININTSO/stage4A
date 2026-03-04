@@ -111,9 +111,10 @@ public:
     typedef HdvfType Hdvf_type;
     typedef typename Hdvf_type::Coefficient_ring Coefficient_ring;
     typedef typename Hdvf_type:: Chain_complex Chain_complex;
+    typedef std::map<std::vector<PSC_flag>, Data> Map_type;
 
 protected:
-    std::map<std::vector<PSC_flag>, Data> map;
+    Map_type map;
     const Chain_complex& complex;
     std::string filename;
     MatrixXd shortest;
@@ -152,6 +153,13 @@ public:
         dist.afficher();
         std::cout << ">>>>>>>>>>>>>>>>Stat connectedness<<<<<<<<<<<<<<<<<" << std::endl;
         dist_connectedness.afficher();
+
+        // Get HDVFs of max degree
+        std::vector<size_t> max_degree_ids(get_max_degree_hdvfs(DG.max));
+        std::cout << "HDVFs of max degree:" << std::endl;
+        for (size_t id : max_degree_ids)
+            std::cout << id << " ";
+        std::cout << std::endl;
 
         // Compute the shortest paths in the HDVF graph
         // Save the map
@@ -705,6 +713,15 @@ public:
         result.push_back(stat_dist);
         result.push_back(stat_dist_connectedness);
         return result;
+    }
+
+    std::vector<size_t> get_max_degree_hdvfs (int max_degree) {
+        std::vector<size_t> res;
+        for (Map_type::const_iterator it = map.cbegin(); it != map.cend(); ++it) {
+            if ((it->second.deg_M+it->second.deg_W+it->second.deg_MW) == max_degree)
+                res.push_back(it->second.id);
+        }
+        return res;
     }
 };
 
