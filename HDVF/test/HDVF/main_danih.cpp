@@ -20,8 +20,9 @@
 #include <CGAL/HDVF/Hdvf_space.h>
 #include <CGAL/HDVF/Hdvf_core.h>
 #include <CGAL/OSM/OSM.h>
+#include <eigen3/Eigen/Dense>
 
-#define DEBUG
+//#define DEBUG
 
 namespace HDVF = CGAL::Homological_discrete_vector_field;
 
@@ -40,6 +41,8 @@ using HDVF_type = HDVF::Hdvf<Chain_complex> ;
 using PSC_flag = HDVF::PSC_flag;
 using Cell_pair = HDVF::Cell_pair;
 
+// Types Eigen
+typedef Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> MatrixXd;
 
 enum operations{
         M, W, MW, NONE
@@ -113,12 +116,18 @@ protected:
     std::map<std::vector<PSC_flag>, Data> map;
     const Chain_complex& complex;
     std::string filename;
+    MatrixXd shortest;
+    int limit;
 public:
     Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file) {
+        // Init HDVF
         HDVF_type hdvf(complex, HDVF::OPT_FULL);
         hdvf.compute_perfect_hdvf();
         hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
 //        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
+
+        // Run flooding
+        limit=0;
         flooding(hdvf, 1);
         std::vector<stat> vec = stat_G();
         stat M = vec[0];
@@ -126,17 +135,100 @@ public:
         stat MW = vec[2];
         stat DC = vec[3];
         stat DG = vec[4];
+        stat dist = vec[5];
+        stat dist_connectedness = vec[6];
         std::cout << "#######################" << filename << "#######################" << std::endl;
-        std::cout << ">>>>>>>>>>>>>>>>Stat M<<<<<<<<<<<<<<<<<<" << std::endl;
+        std::cout << ">>>>>>>>>>>>>>>>Stat Degree M<<<<<<<<<<<<<<<<<<" << std::endl;
         M.afficher();
-        std::cout << ">>>>>>>>>>>>>>>>Stat W<<<<<<<<<<<<<<<<<<" << std::endl;
+        std::cout << ">>>>>>>>>>>>>>>>Stat Degree W<<<<<<<<<<<<<<<<<<" << std::endl;
         W.afficher();
-        std::cout << ">>>>>>>>>>>>>>>>Stat MW<<<<<<<<<<<<<<<<<" << std::endl;
+        std::cout << ">>>>>>>>>>>>>>>>Stat Degree MW<<<<<<<<<<<<<<<<<" << std::endl;
         MW.afficher();
-        std::cout << ">>>>>>>>>>>>>>>>Stat DC<<<<<<<<<<<<<<<<<" << std::endl;
-        DC.afficher();
-        std::cout << ">>>>>>>>>>>>>>>>Stat DG<<<<<<<<<<<<<<<<<" << std::endl;
+        std::cout << ">>>>>>>>>>>>>>>>Stat Degree<<<<<<<<<<<<<<<<<" << std::endl;
         DG.afficher();
+        std::cout << ">>>>>>>>>>>>>>>>Stat Delta d / connectedness <<<<<<<<<<<<<<<<<" << std::endl;
+        DC.afficher();
+        std::cout << ">>>>>>>>>>>>>>>>Stat dist (shortest path)<<<<<<<<<<<<<<<<<" << std::endl;
+        dist.afficher();
+        std::cout << ">>>>>>>>>>>>>>>>Stat connectedness<<<<<<<<<<<<<<<<<" << std::endl;
+        dist_connectedness.afficher();
+
+        // Compute the shortest paths in the HDVF graph
+        // Save the map
+        std::map<std::vector<PSC_flag>, Data> map_flood(map);
+        map.clear();
+        // Init the matrix
+        init_shortest();
+        // Run flooding again to create the adjacency matrix
+        flooding(hdvf, 1, true);
+        // Compute shortest paths
+        compute_shortest();
+//        std::cout << "shortest:" << std::endl << shortest;
+        stat_shortest();
+        shortest_to_matlab();
+    }
+
+    void init_shortest () {
+        // Create a matrix of size limit x limit
+        shortest = MatrixXd(limit, limit);
+        for (int i=0; i < limit; ++i) {
+            for (int j=0; j < limit; ++j) {
+                if (i==j) shortest(i,i)=0;
+                else shortest(i,j)=limit;
+            }
+        }
+    }
+
+    void compute_shortest () {
+        bool change = true;
+        int cpt=0;
+        while (change) {
+            change = false;
+            // Pseudo product -> shortest paths (Floyd-Warshall)
+            for (int k=0; k < limit; ++k) {
+                for (int i=0; i < limit; ++i) {
+                    for (int j=0; j < limit; ++j) {
+                        int tmp(shortest(i,k)+shortest(k,j));
+                        if (tmp < shortest(i,j)) {
+                            shortest(i,j) = tmp;
+                            change = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void stat_shortest () {
+        int min_shortest = limit, max_shortest = 0, somme_shortest=0;
+        std::vector<int> hist_shortest(100,0);
+        for (int i=0; i < limit; ++i) {
+            for (int j=0; j < limit; ++j) {
+                if (i != j) {
+                    int coef(shortest(i,j));
+                    if (coef < min_shortest)
+                        min_shortest = coef;
+                    if (coef > max_shortest)
+                        max_shortest = coef;
+                    somme_shortest += coef;
+                    hist_shortest.at(coef)++;
+                }
+            }
+        }
+        stat stat_shortest(min_shortest, max_shortest, somme_shortest / (1. * limit * limit), hist_shortest);
+        std::cout << "############### Stats shortests paths ###############" << std::endl;
+        stat_shortest.afficher();
+    }
+
+    void shortest_to_matlab () {
+        std::cout << "[";
+        for (int i=0; i < limit; ++i) {
+            for (int j=0; j < limit; ++j) {
+                std::cout << shortest(i,j) << ", " ;
+            }
+            std::cout << " ; " << std::endl;
+        }
+        std::cout << "]";
     }
 
     int distance(HDVF_type X, HDVF_type X_prime, int dim){
@@ -233,7 +325,9 @@ public:
     }
     std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim){
         HDVF_type X(X1), X_prime(X_prime1);
+#ifdef DEBUG
         std::cout << "---------------------DEBUT------------------" << std::endl;
+#endif
         std::vector<Operation> result;
         int delta = distance(X, X_prime, dim);
         std::vector<std::vector<size_t>> misaligned_PSC = misaligned(X, X_prime, dim);
@@ -356,7 +450,9 @@ public:
                 }
             }
         }
+#ifdef DEBUG
         std::cout << "---------------------FIN------------------" << std::endl;
+#endif
         return result;
     }
 
@@ -380,8 +476,7 @@ public:
     }
 
 
-    void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, Data>& map,  int dim, int& id){
-
+    void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, Data>& map,  int dim, int& id, bool compute_paths = false){
         HDVF_type X(a_traiter.front());
         bool found_M, found_W, found_MW;
         int deg_M, deg_W, deg_MW;
@@ -409,7 +504,13 @@ public:
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
+#ifdef DEBUG
                     std::cout << "X " << map.at(flag_X).id << "-M(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+#endif
+                }
+                if (compute_paths) {
+                    size_t idX (map.at(flag_X).id), idX1 (map.at(flag_X1).id);
+                    shortest(idX, idX1) = 1;
                 }
             }
         }
@@ -430,7 +531,13 @@ public:
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
+#ifdef DEBUG
                     std::cout << "X " << map.at(flag_X).id << "-W(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+#endif
+                }
+                if (compute_paths) {
+                    size_t idX (map.at(flag_X).id), idX1 (map.at(flag_X1).id);
+                    shortest(idX, idX1) = 1;
                 }
             }
         }
@@ -452,7 +559,13 @@ public:
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
+#ifdef DEBUG
                     std::cout << "X " << map.at(flag_X).id << "-MW(" << c.sigma << ", " << c.tau << ")-> X " << map.at(X1.psc_flags(1)).id << std::endl;
+#endif
+                }
+                if (compute_paths) {
+                    size_t idX (map.at(flag_X).id), idX1 (map.at(flag_X1).id);
+                    shortest(idX, idX1) = 1;
                 }
             }
         }
@@ -460,7 +573,7 @@ public:
 
     }
 
-    std::map<std::vector<PSC_flag>, Data> flooding(HDVF_type X, int dim){
+    void flooding(HDVF_type X, int dim, bool compute_paths = false){
         std::queue<HDVF_type> a_traiter;
         int id = 0;
         Operation O0(operations::NONE, 0, 0, dim);
@@ -468,18 +581,21 @@ public:
         Data D0(id, 0, 0, 0, O0, X.find_pairs_M(dim, found).size(), X.find_pairs_W(dim, found).size(), X.find_pairs_MW(dim, found).size());
         map.insert({X.psc_flags(dim),D0});
         a_traiter.push(X);
-        int limit = 0;
         size_t cpt(0);
         while(!(a_traiter.empty())){
+#ifdef DEBUG
             std::cout << cpt++ << "===================" << std::endl;
-            traiter(X, a_traiter, map, dim, id);
-            std::vector<PSC_flag> vec = a_traiter.front().psc_flags(dim);
-            map.at(vec).distance_connectedness = connectedness(X, a_traiter.front(), dim).size();
+#endif
+            traiter(X, a_traiter, map, dim, id, compute_paths);
+            if (!compute_paths) {
+                std::vector<PSC_flag> vec = a_traiter.front().psc_flags(dim);
+                map.at(vec).distance_connectedness = connectedness(X, a_traiter.front(), dim).size();
+            }
             a_traiter.pop();
-            limit++;
+            if (!compute_paths)
+                limit++;
         }
         std::cout << "Nombre de HDVFs: " << limit << std::endl;
-        return map;
     }
     void afficher_map(std::map<std::vector<PSC_flag>, Data> map){
         for(auto it=map.begin(); it!=map.end(); it++){
@@ -489,12 +605,16 @@ public:
 
     std::vector<stat> stat_G(){
         std::vector<stat> result;
-        int nb_elt=0, somme_M=0, somme_W=0, somme_MW=0, somme_dc = 0, somme_dg = 0;
+        int nb_elt=0, somme_dist=0, somme_dist_connectedness = 0, somme_M=0, somme_W=0, somme_MW=0, somme_dc = 0, somme_dg = 0;
+        int dist_min=10000, dist_max=0, dist_mean;
+        int dist_connectedness_min=10000, dist_connectedness_max=0, dist_connectedness_mean;
         int deg_min_M=10000, deg_max_M=0, deg_mean_M;
         int deg_min_W=10000, deg_max_W=0, deg_mean_W;
         int deg_min_MW=10000, deg_max_MW=0, deg_mean_MW;
         int dc_min=10000, dc_max=0, dc_mean;
         int dg_min=10000, dg_max=0, dg_mean;
+        std::vector<int> hist_dist(100, 0);
+        std::vector<int> hist_dist_connectedness(100, 0);
         std::vector<int> hist_M (50, 0);
         std::vector<int> hist_W (50, 0);
         std::vector<int> hist_MW (50, 0);
@@ -502,6 +622,11 @@ public:
         std::vector<int> hist_dg(100, 0);
         for(auto it=map.begin(); it!=map.end(); it++){
             Data d = it->second;
+            if (d.distance < dist_min)
+                dist_min = d.distance;
+            if (d.distance_connectedness < dist_connectedness_min)
+                dist_connectedness_min = d.distance_connectedness;
+
             if(d.deg_M < deg_min_M){
                 deg_min_M = d.deg_M;
             }
@@ -513,6 +638,11 @@ public:
             }
 
             ////////////////////////
+            if (d.distance > dist_max)
+                dist_max = d.distance;
+            if (d.distance_connectedness > dist_connectedness_max)
+                dist_connectedness_max = d.distance_connectedness;
+
             if(d.deg_M > deg_max_M){
                 deg_max_M = d.deg_M;
             }
@@ -536,11 +666,16 @@ public:
             if(abs(d.distance_connectedness-d.distance) > dc_max){
                 dc_max = abs(d.distance_connectedness-d.distance);
             }
+            hist_dist[d.distance] += 1;
+            hist_dist_connectedness[d.distance_connectedness] += 1;
             hist_M[d.deg_M] += 1;
             hist_W[d.deg_W] += 1;
             hist_MW[d.deg_MW] += 1;
             hist_dg[d.deg_MW+d.deg_W+d.deg_M] += 1;
             hist_dc[abs(d.distance_connectedness-d.distance)] += 1;
+
+            somme_dist += d.distance;
+            somme_dist_connectedness += d.distance_connectedness;
             somme_M += d.deg_M;
             somme_W += d.deg_W;
             somme_MW += d.deg_MW;
@@ -548,11 +683,15 @@ public:
             somme_dg += d.deg_M + d.deg_W + d.deg_MW;
             nb_elt++;
         }
+        dist_mean = somme_dist / (1.0 * nb_elt);
+        dist_connectedness_mean = somme_dist_connectedness / (1.0 * nb_elt);
         deg_mean_M = somme_M / (1.0 * nb_elt);
         deg_mean_W = somme_W / (1.0 * nb_elt);
         deg_mean_MW = somme_MW / (1.0 * nb_elt);
         dg_mean = somme_dg / (1.0 * nb_elt);
         dc_mean = somme_dc / (1.0 * nb_elt);
+        stat stat_dist(dist_min, dist_max, dist_mean, hist_dist);
+        stat stat_dist_connectedness(dist_connectedness_min, dist_connectedness_max, dist_connectedness_mean, hist_dist_connectedness);
         stat stat_M(deg_min_M, deg_max_M, deg_mean_M, hist_M);
         stat stat_W(deg_min_W, deg_max_W, deg_mean_W, hist_W);
         stat stat_MW(deg_min_MW, deg_max_MW, deg_mean_MW, hist_MW);
@@ -563,6 +702,8 @@ public:
         result.push_back(stat_MW);
         result.push_back(stat_dc);
         result.push_back(stat_dg);
+        result.push_back(stat_dist);
+        result.push_back(stat_dist_connectedness);
         return result;
     }
 };
@@ -570,7 +711,6 @@ public:
 
 
 void compute_stat(std::string& filename){
-
     HDVF::Mesh_object_io<Traits> simp;
     simp.read_simp(filename);
     Chain_complex complex(simp);
