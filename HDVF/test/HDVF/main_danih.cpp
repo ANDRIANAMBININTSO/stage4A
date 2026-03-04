@@ -25,8 +25,8 @@
 namespace HDVF = CGAL::Homological_discrete_vector_field;
 
 //typedef int Coefficient_ring;
-//typedef CGAL::Z2 Coefficient_ring;
-typedef CGAL::Zp<5, char, true> Coefficient_ring;
+typedef CGAL::Z2 Coefficient_ring;
+//typedef CGAL::Zp<5, char, true> Coefficient_ring;
 typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::COLUMN> Column_chain;
 typedef CGAL::OSM::Sparse_matrix<Coefficient_ring, CGAL::OSM::COLUMN> Column_matrix;
 typedef CGAL::OSM::Sparse_chain<Coefficient_ring, CGAL::OSM::ROW> Row_chain;
@@ -115,9 +115,9 @@ protected:
 public:
     Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file) {
         HDVF_type hdvf(complex, HDVF::OPT_FULL);
-//        hdvf.compute_perfect_hdvf();
+        hdvf.compute_perfect_hdvf();
 //        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
-        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
+//        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
         hdvf.write_flags();
         hdvf.write_matrices();
         std::cout << "###################" << std::endl;
