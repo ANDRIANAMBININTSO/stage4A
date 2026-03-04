@@ -1155,8 +1155,6 @@ std::vector<Cell_pair> Hdvf<ChainComplex>::find_pairs_MW(int q, bool &found) con
                         p.tau = sigma ; // secondary cell
                         p.dim = q ;
                         pairs.push_back(p) ;
-                        std::cout << "P " << p.sigma << " - Z_1: " << z(p.sigma,1) << std::endl;
-                        std::cout << "S " << p.tau << " - Z^1: " << co_z(p.tau,1) << std::endl;
                     }
                 }
             }
@@ -1378,7 +1376,7 @@ void Hdvf<ChainComplex>::M(size_t pi, size_t gamma, int q) {
         CGAL_precondition(this->_K.is_valid_cell(gamma, q));
 
         // Output the operation details to the console
-        std::cout << "M of " << q << "(" << pi << "," << gamma << ")" << std::endl;
+//        std::cout << "M of " << q << "(" << pi << "," << gamma << ")" << std::endl;
 
         if (q == this->_K.dimension())
             throw(std::runtime_error("Operation M invalid in maximum dimension")) ;
@@ -1498,7 +1496,7 @@ void Hdvf<ChainComplex>::W(size_t sigma, size_t gamma, int q) {
         CGAL_precondition(this->_K.is_valid_cell(gamma, q));
 
         // Output the operation details to the console
-        std::cout << "W of " << q << "(" << sigma << "," << gamma << ")" << std::endl;
+//        std::cout << "W of " << q << "(" << sigma << "," << gamma << ")" << std::endl;
 
         if (q == 0)
             throw(std::runtime_error("W operation in dimension 0")) ;
@@ -1621,7 +1619,7 @@ void Hdvf<ChainComplex>::MW(size_t pi, size_t sigma, int q) {
         CGAL_precondition(this->_K.is_valid_cell(pi, q));
         CGAL_precondition(this->_K.is_valid_cell(sigma, q));
         // Output the operation details to the console
-        std::cout << "MW of " << q << "(" << pi << "," << sigma << ")" << std::endl;
+//        std::cout << "MW of " << q << "(" << pi << "," << sigma << ")" << std::endl;
 
         if (q <= 0)
             throw(std::runtime_error("MW operation in dimension 0")) ;
@@ -1691,7 +1689,7 @@ void Hdvf<ChainComplex>::MW(size_t pi, size_t sigma, int q) {
         // F_q
 
         this->_F_row.at(q) -= (F11 * xi_inv) * tmp1 ;
-        OSM::set_column(this->_F_row.at(q), sigma, F11 * (-xi_inv)) ;
+        OSM::set_column(this->_F_row.at(q), sigma, F11 * xi_inv) ;
 
         // G_q+1 // note: G_q+1 is not be modified if the Hdvf is perfect
 
