@@ -118,25 +118,17 @@ protected:
     const Chain_complex& complex;
     std::string filename;
     MatrixXd shortest;
-    int limit;
+    int limit=0;
 public:
     Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file) {
         // Init HDVF
         HDVF_type hdvf(complex, HDVF::OPT_FULL);
         hdvf.compute_perfect_hdvf();
-<<<<<<< HEAD
 //        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
 //        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
         hdvf.write_flags();
         hdvf.write_matrices();
         std::cout << "###################" << std::endl;
-=======
-        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
-//        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
-
-        // Run flooding
-        limit=0;
->>>>>>> 659b32d63e96c138d78f7e2cc40d2dec7d7cb5c9
         flooding(hdvf, 1);
         std::vector<stat> vec = stat_G();
         stat M = vec[0];
