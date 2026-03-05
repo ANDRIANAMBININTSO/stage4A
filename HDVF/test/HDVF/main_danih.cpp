@@ -119,10 +119,10 @@ protected:
     std::string filename;
     MatrixXd shortest;
     int limit;
+    Hdvf_type& hdvf;
 public:
-    Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file) {
-        // Init HDVF
-        HDVF_type hdvf(complex, HDVF::OPT_FULL);
+    Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file), hdvf(*(new Hdvf_type(complex, HDVF::OPT_FULL))) {
+        // Hdvf built above
         hdvf.compute_perfect_hdvf();
         hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
 //        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
@@ -160,6 +160,12 @@ public:
         for (size_t id : max_degree_ids)
             std::cout << id << " ";
         std::cout << std::endl;
+        // Get HDVFs of min degree
+        std::vector<size_t> min_degree_ids(get_max_degree_hdvfs(DG.max));
+        std::cout << "HDVFs of min degree:" << std::endl;
+        for (size_t id : min_degree_ids)
+            std::cout << id << " ";
+        std::cout << std::endl;
 
         // Compute the shortest paths in the HDVF graph
         // Save the map
@@ -174,7 +180,12 @@ public:
 //        std::cout << "shortest:" << std::endl << shortest;
         stat_shortest();
         shortest_to_matlab();
+
+        // Test build_hdvf_from_psc_flags
+        Hdvf_type hdvf_new(build_hdvf_from_psc_flags(map.begin()->first, 1));
     }
+
+    ~Hdvf_space() { delete &hdvf; }
 
     void init_shortest () {
         // Create a matrix of size limit x limit
@@ -723,6 +734,22 @@ public:
         }
         return res;
     }
+
+    std::vector<size_t> get_min_degree_hdvfs (int min_degree) {
+        std::vector<size_t> res;
+        for (Map_type::const_iterator it = map.cbegin(); it != map.cend(); ++it) {
+            if ((it->second.deg_M+it->second.deg_W+it->second.deg_MW) == min_degree)
+                res.push_back(it->second.id);
+        }
+        return res;
+    }
+
+    Hdvf_type build_hdvf_from_psc_flags (const std::vector<PSC_flag>& flags_dim, int dim) {
+        std::vector<std::vector<PSC_flag> > flags(hdvf.psc_flags());
+        flags[dim] = flags_dim;
+        Hdvf_type hdvf_new(complex, flags, true); // complex, flags, build_reduction
+        return hdvf_new;
+    }
 };
 
 
@@ -749,19 +776,21 @@ int main(int argc, char ** argv){
     }
     else {
         std::vector<std::string> tab;
-        tab.push_back("data/simp/three_triangles.simp");
-        tab.push_back("data/simp/three_triangles_d.simp");
-        tab.push_back("data/simp/three_triangles_1.simp");
-        tab.push_back("data/simp/three_triangles_inv.simp");
-        tab.push_back("data/simp/three_triangles_f.simp");
-        tab.push_back("data/simp/three_triangles_2.simp");
-        tab.push_back("data/simp/three_triangles_3.simp");
+//        tab.push_back("data/simp/three_triangles.simp");
+//        tab.push_back("data/simp/three_triangles_d.simp");
+//        tab.push_back("data/simp/three_triangles_1.simp");
+//        tab.push_back("data/simp/three_triangles_inv.simp");
+//        tab.push_back("data/simp/three_triangles_f.simp");
+//        tab.push_back("data/simp/three_triangles_2.simp");
+//        tab.push_back("data/simp/three_triangles_3.simp");
+        tab.push_back("data/simp/six_triangles.simp");
         tab.push_back("data/simp/six_triangles_s.simp");
         tab.push_back("data/simp/six_triangles_cs.simp");
         tab.push_back("data/simp/six_triangles_cc.simp");
         tab.push_back("data/simp/six_triangles_ss.simp");
         tab.push_back("data/simp/six_triangles_ss_inv.simp");
-        tab.push_back("data/simp/six_triangles.simp");
+        tab.push_back("data/simp/six_triangles_2.simp");
+        tab.push_back("data/simp/six_triangles_f.simp");
         for (std::string filename: tab){
             compute_stat(filename);
         }
