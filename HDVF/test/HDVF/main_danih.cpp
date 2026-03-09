@@ -118,6 +118,8 @@ protected:
     const Chain_complex& complex;
     std::string filename;
     MatrixXd shortest;
+    std::vector<int> farthest_HDVF;
+    std::map<int, int> closest_from_farthest_HDVF;
     int limit=0;
 public:
     Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file) {
@@ -171,6 +173,15 @@ public:
         flooding(hdvf, 1, true);
         // Compute shortest paths
         compute_shortest();
+        
+        get_farthest_HDVF();
+        std::cout << "##################Farthest HDVF##################" << std::endl;
+        afficher_tab(farthest_HDVF);
+
+        get_top_5_closest_from_farthest();
+        std::cout << "##################Closest from Farthest HDVF##################" << std::endl;
+        afficher_map(closest_from_farthest_HDVF);
+
 //        std::cout << "shortest:" << std::endl << shortest;
         stat_shortest();
         shortest_to_matlab();
@@ -237,6 +248,36 @@ public:
             std::cout << " ; " << std::endl;
         }
         std::cout << "]";
+    }
+
+    void get_farthest_HDVF(){
+        int max;
+        for (int i = 0; i<limit; i++){
+            max = 0;
+            for (int j = 0; j<limit; j++){
+                if(shortest(i, j)>shortest(i, max)){
+                    max = j;
+                }
+            }
+            farthest_HDVF.push_back(max);
+        }
+    }
+    void get_top_5_closest_from_farthest(){
+        std::vector<int> distance;
+        int min;
+        for(int i=0; i<limit; i++){
+            distance.push_back(shortest(i, farthest_HDVF[i]));
+        }
+        for(int k = 0; k<5; k++){
+            min = 0;
+            for(int i=0; i<limit; i++){
+                if(distance[i]<distance[min]){
+                    min = i;
+                }
+            }
+            distance[min] = 10000;
+            closest_from_farthest_HDVF.insert({min, farthest_HDVF[min]});
+        }
     }
 
     int distance(HDVF_type X, HDVF_type X_prime, int dim){
@@ -608,6 +649,11 @@ public:
     void afficher_map(std::map<std::vector<PSC_flag>, Data> map){
         for(auto it=map.begin(); it!=map.end(); it++){
             it->second.afficher();
+        }
+    }
+    void afficher_map(std::map<int, int> map){
+        for(auto it=map.begin(); it!=map.end(); it++){
+            std::cout << it->first << ": " << it->second << std::endl; 
         }
     }
 
