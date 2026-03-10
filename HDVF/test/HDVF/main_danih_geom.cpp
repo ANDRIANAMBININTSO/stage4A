@@ -7,6 +7,7 @@
 #include <ostream>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/Zp.h>
@@ -111,10 +112,12 @@ public:
     typedef HdvfType Hdvf_type;
     typedef typename Hdvf_type::Coefficient_ring Coefficient_ring;
     typedef typename Hdvf_type:: Chain_complex Chain_complex;
+    typedef std::vector<PSC_flag> Flag_type;
     typedef std::map<std::vector<PSC_flag>, Data> Map_type;
 
 protected:
     Map_type map;
+    std::vector<Flag_type> id_to_flags;
     const Chain_complex& complex;
     std::string filename;
     MatrixXd shortest;
@@ -127,7 +130,7 @@ public:
         hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
 //        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
 
-        CGAL::IO::write_VTK(hdvf, complex, "tmp/test_hdvf");
+        CGAL::IO::write_VTK(hdvf, complex, compute_name(file, "_init"));
 
         // Run flooding
         flooding(hdvf, 1);
@@ -169,9 +172,10 @@ public:
         std::cout << std::endl;
 
         // Compute the shortest paths in the HDVF graph
-        // Save the map
+        // Save the map and id_to_flags
         std::map<std::vector<PSC_flag>, Data> map_flood(map);
         map.clear();
+        id_to_flags.clear();
         // Init the matrix
         init_shortest();
         // Run flooding again to create the adjacency matrix
@@ -180,10 +184,40 @@ public:
         compute_shortest();
 //        std::cout << "shortest:" << std::endl << shortest;
         stat_shortest();
-        shortest_to_matlab();
+        std::string matlab_file(compute_name(filename,".m"));
+        shortest_to_matlab(matlab_file);
 
-        // Test build_hdvf_from_psc_flags
-        Hdvf_type hdvf_new(build_hdvf_from_psc_flags(map.begin()->first, 1));
+        // Build HDVF from flag and export to vtk
+        // Max degrees
+        for (int i=0; i<max_degree_ids.size(); ++i) {
+            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(max_degree_ids.at(i)), 1));
+            std::string suffix("_max_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
+            CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
+        }
+        // Min degrees
+        for (int i=0; i<min_degree_ids.size(); ++i) {
+            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_degree_ids.at(i)), 1));
+            std::string suffix("_min_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
+            CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
+        }
+    }
+
+    std::string compute_name(std::string filename, std::string suffix) {
+        // Cut wrt '/'
+        std::stringstream str_stream1(filename);
+        std::string segment;
+        std::vector<std::string> seglist;
+
+        while(std::getline(str_stream1, segment, '/')) {
+           seglist.push_back(segment);
+        }
+        size_t n(seglist.size());
+        std::string file(seglist.at(n-1)); // File name without leading path
+        // Remove .xyz suffix
+        std::stringstream str_stream2(file);
+        while(std::getline(str_stream1, segment, '.')) {}
+
+        return ("tmp/"+segment+suffix);
     }
 
     void init_shortest () {
@@ -238,15 +272,21 @@ public:
         stat_shortest.afficher();
     }
 
-    void shortest_to_matlab () {
-        std::cout << "[";
+    void shortest_to_matlab (std::string filename) {
+        std::ofstream out_file ( filename, std::ios::out | std::ios::trunc);
+        if ( ! out_file . good () ) {
+            std::cerr << "Out fatal Error:\n  " << filename << " not found.\n";
+            throw std::runtime_error("File Parsing Error: File not found");
+        }
+        out_file << "A = [";
         for (int i=0; i < limit; ++i) {
             for (int j=0; j < limit; ++j) {
-                std::cout << shortest(i,j) << ", " ;
+                out_file << shortest(i,j) << ", " ;
             }
-            std::cout << " ; " << std::endl;
+            out_file << " ; " << std::endl;
         }
-        std::cout << "]";
+        out_file << "]" << std::endl;
+        out_file.close();
     }
 
     int distance(HDVF_type X, HDVF_type X_prime, int dim){
@@ -518,8 +558,9 @@ public:
                     }
                 }
                 else{
-                    id++;
+                    id_to_flags.push_back(X1.psc_flags(dim));
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                    id++;
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
 #ifdef DEBUG
@@ -545,8 +586,9 @@ public:
                     }
                 }
                 else{
-                    id++;
+                    id_to_flags.push_back(X1.psc_flags(dim));
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                    id++;
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
 #ifdef DEBUG
@@ -573,8 +615,9 @@ public:
                     }
                 }
                 else{
-                    id++;
+                    id_to_flags.push_back(X1.psc_flags(dim));
                     Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                    id++;
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
 #ifdef DEBUG
@@ -597,6 +640,8 @@ public:
         Operation O0(operations::NONE, 0, 0, dim);
         bool found;
         Data D0(id, 0, 0, 0, O0, X.find_pairs_M(dim, found).size(), X.find_pairs_W(dim, found).size(), X.find_pairs_MW(dim, found).size());
+        id_to_flags.push_back(X.psc_flags(dim));
+        id++;
         map.insert({X.psc_flags(dim),D0});
         a_traiter.push(X);
         size_t cpt(0);
@@ -799,25 +844,25 @@ int main(int argc, char ** argv){
 //        tab.push_back("data/simp/three_triangles_3.simp");
 //        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles.simp");
+        tab.push_back("data/simp/six_triangles_v.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_s.simp");
+        tab.push_back("data/simp/six_triangles_3.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_cs.simp");
+        tab.push_back("data/simp/six_triangles_4_1.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_cc.simp");
+        tab.push_back("data/simp/six_triangles_4_2.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_ss.simp");
+        tab.push_back("data/simp/six_triangles_4_3.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_ss_inv.simp");
+        tab.push_back("data/simp/six_triangles_5_1.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_2.simp");
+        tab.push_back("data/simp/six_triangles_5_2.simp");
         tab_nodes.push_back("data/simp/six_triangles.nodes");
 
         tab.push_back("data/simp/six_triangles_f.simp");
