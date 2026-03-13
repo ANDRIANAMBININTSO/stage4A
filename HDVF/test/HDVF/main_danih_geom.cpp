@@ -22,6 +22,7 @@
 #include <CGAL/HDVF/Geometric_chain_complex_tools.h>
 #include <CGAL/OSM/OSM.h>
 #include <eigen3/Eigen/Dense>
+#include "distrib.h"
 
 //#define DEBUG
 
@@ -71,37 +72,44 @@ public:
 
 struct Data
 {
-    int id;
-    int distance, distance_connectedness;
-    int pred;
+    size_t id;
+    size_t distance, distance_connectedness;
+    size_t pred;
     Operation op;
-    int deg_M, deg_W, deg_MW;
-    Data(int id1, int distance1, int distance_connectedness1, int pred1, Operation op1, int deg_M1, int deg_W1, int deg_MW1): id(id1), distance(distance1), distance_connectedness(distance_connectedness1), pred(pred1), op(op1), deg_M(deg_M1), deg_W(deg_W1), deg_MW(deg_MW1){}
+    size_t deg_M, deg_W, deg_MW;
+    size_t len_hom, len_cohom;
+    Data(size_t id1, size_t distance1, size_t distance_connectedness1, size_t pred1, Operation op1, size_t deg_M1, size_t deg_W1, size_t deg_MW1, size_t len_hom1, size_t len_cohom1): id(id1), distance(distance1), distance_connectedness(distance_connectedness1), pred(pred1), op(op1), deg_M(deg_M1), deg_W(deg_W1), deg_MW(deg_MW1), len_hom(len_hom1), len_cohom(len_cohom1) {}
     void afficher(){
         std::cout << id << ": " << distance << ", " << pred << std::endl;
     }
 };
 
-void afficher_tab(std::vector<int> tab){
+template <typename T>
+void afficher_tab(std::vector<T> tab){
     std::cout << "[ ";
     int n = tab.size();
-    for(int j = 0; j<n-1; j++){
-        std::cout << tab[j] << ", ";
+    if (n>0) {
+        for(int j = 0; j<n-1; j++){
+            std::cout << tab[j] << ", ";
+        }
+        std::cout << tab[n-1];
     }
-    std::cout << tab[n-1];
     std::cout << "]" << std::endl;
 }
 
+template <typename T>
 struct stat{
-    int min;
-    int max;
+    T min;
+    T max;
     double mean;
-    std::vector<int> hist;
-    stat(int deg_min1, int deg_max1, int deg_mean1, std::vector<int> hist_M1): min(deg_min1), max(deg_max1), mean(deg_mean1), hist(hist_M1){}
+    std::vector<size_t> hist;
+    std::vector<T> hist_labels;
+    stat(T min1, T max1, T mean1, std::vector<size_t> hist1, std::vector<T> hist_labels1): min(min1), max(max1), mean(mean1), hist(hist1), hist_labels(hist_labels1) {}
     void afficher(){
         std::cout << "Min: " << min << std::endl;
         std::cout << "Max: " << max << std::endl;
         std::cout << "Mean: " << mean << std::endl;
+        afficher_tab(hist_labels);
         afficher_tab(hist);
     }
 };
@@ -116,6 +124,7 @@ public:
     typedef std::map<std::vector<PSC_flag>, Data> Map_type;
 
 protected:
+    int dim;
     Map_type map;
     std::vector<Flag_type> id_to_flags;
     const Chain_complex& complex;
@@ -124,24 +133,28 @@ protected:
     int limit;
     Hdvf_type hdvf;
 public:
-    Hdvf_space(const Chain_complex& c, std::string file) : complex(c), filename(file), limit(0), hdvf(Hdvf_type(c, HDVF::OPT_FULL)) {
+    Hdvf_space(const Chain_complex& c, int dim1, std::string file) : complex(c), dim(dim1), filename(file), limit(0), hdvf(Hdvf_type(c, HDVF::OPT_FULL)) {
         // Hdvf built above
         hdvf.compute_perfect_hdvf();
-        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
+//        hdvf.write_hdvf_reduction("tmp/hdvf.hdvf");
 //        hdvf.read_hdvf_reduction("tmp/hdvf.hdvf");
 
         CGAL::IO::write_VTK(hdvf, complex, compute_name(file, "_init"));
 
         // Run flooding
-        flooding(hdvf, 1);
-        std::vector<stat> vec = stat_G();
-        stat M = vec[0];
-        stat W = vec[1];
-        stat MW = vec[2];
-        stat DC = vec[3];
-        stat DG = vec[4];
-        stat dist = vec[5];
-        stat dist_connectedness = vec[6];
+        flooding(hdvf, dim);
+        std::vector<stat<size_t> > vec = compute_stats();
+        stat<size_t> M = vec[0];
+        stat<size_t> W = vec[1];
+        stat<size_t> MW = vec[2];
+        stat<size_t> DC = vec[3];
+        stat<size_t> DG = vec[4];
+        stat<size_t> dist = vec[5];
+        stat<size_t> dist_connectedness = vec[6];
+        stat<size_t> len_hom = vec[7];
+        stat<size_t> len_cohom = vec[8];
+        stat<size_t> len_hom_cohom = vec[9];
+
         std::cout << "#######################" << filename << "#######################" << std::endl;
         std::cout << ">>>>>>>>>>>>>>>>Stat Degree M<<<<<<<<<<<<<<<<<<" << std::endl;
         M.afficher();
@@ -157,6 +170,12 @@ public:
         dist.afficher();
         std::cout << ">>>>>>>>>>>>>>>>Stat connectedness<<<<<<<<<<<<<<<<<" << std::endl;
         dist_connectedness.afficher();
+        std::cout << ">>>>>>>>>>>>>>>>Stat len hom generators<<<<<<<<<<<<<<<<<" << std::endl;
+        len_hom.afficher();
+        std::cout << ">>>>>>>>>>>>>>>>Stat len cohom generators<<<<<<<<<<<<<<<<<" << std::endl;
+        len_cohom.afficher();
+        std::cout << ">>>>>>>>>>>>>>>>Stat len hom+cohom generators<<<<<<<<<<<<<<<<<" << std::endl;
+        len_hom_cohom.afficher();
 
         // Get HDVFs of max degree
         std::vector<size_t> max_degree_ids(get_max_degree_hdvfs(DG.max));
@@ -165,11 +184,25 @@ public:
             std::cout << id << " ";
         std::cout << std::endl;
         // Get HDVFs of min degree
-        std::vector<size_t> min_degree_ids(get_max_degree_hdvfs(DG.max));
+        std::vector<size_t> min_degree_ids(get_min_degree_hdvfs(DG.min));
         std::cout << "HDVFs of min degree:" << std::endl;
         for (size_t id : min_degree_ids)
             std::cout << id << " ";
         std::cout << std::endl;
+
+        // Get HDVFs of min len generators
+        std::vector<size_t> min_hom_gene_ids(get_min_hom_generators(len_hom.min));
+        std::cout << "HDVFs of min hom length: " << min_hom_gene_ids.size() << " HDVFs" << std::endl;
+        for (size_t id : min_hom_gene_ids)
+            std::cout << id << " ";
+        std::cout << std::endl;
+
+//        for (size_t id : min_hom_gene_ids) {
+//            Data tmp(map.at(id_to_flags.at(id)));
+//            std::cout << "id/deg_M/deg_W/deg_MW/deg//len_hom/len_cohom: " << id << " / " << tmp.deg_M << " / " << tmp.deg_W << " / " << tmp.deg_MW << " / " << tmp.deg_M+tmp.deg_W+tmp.deg_MW << " // " << tmp.len_hom << " / " << tmp.len_cohom ;
+//            std::cout << std::endl;
+//        }
+
 
         // Compute the shortest paths in the HDVF graph
         // Save the map and id_to_flags
@@ -179,7 +212,7 @@ public:
         // Init the matrix
         init_shortest();
         // Run flooding again to create the adjacency matrix
-        flooding(hdvf, 1, true);
+        flooding(hdvf, dim, true);
         // Compute shortest paths
         compute_shortest();
 //        std::cout << "shortest:" << std::endl << shortest;
@@ -188,18 +221,25 @@ public:
         shortest_to_matlab(matlab_file);
 
         // Build HDVF from flag and export to vtk
-        // Max degrees
-        for (int i=0; i<max_degree_ids.size(); ++i) {
-            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(max_degree_ids.at(i)), 1));
+        // Max degrees (N elements max)
+        const int N=1;
+        for (int i=0; (i<max_degree_ids.size()) && (i<N); ++i) {
+            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(max_degree_ids.at(i)), dim));
             std::string suffix("_max_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
             CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
         }
-        // Min degrees
-        for (int i=0; i<min_degree_ids.size(); ++i) {
-            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_degree_ids.at(i)), 1));
-            std::string suffix("_min_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
-            CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
-        }
+//        // Min degrees (5 elements max)
+//        for (int i=0; (i<min_degree_ids.size()) && (i<5); ++i) {
+//            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_degree_ids.at(i)), dim));
+//            std::string suffix("_min_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
+//            CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
+//        }
+//
+//        // One min hom generator
+////        Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_hom_gene_ids.at(0)), dim));
+//        Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_hom_gene_ids.at(min_hom_gene_ids.size()-1)), dim));
+//        std::string suffix("_min_hom"), out_hdvf_vtk_files(compute_name(filename, suffix));
+//        CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
     }
 
     std::string compute_name(std::string filename, std::string suffix) {
@@ -252,24 +292,23 @@ public:
     }
 
     void stat_shortest () {
-        int min_shortest = limit, max_shortest = 0, somme_shortest=0;
-        std::vector<int> hist_shortest(100,0);
+        distrib<size_t> dist_shortest, dist_row, dist_rows;
         for (int i=0; i < limit; ++i) {
+            dist_row.clear();
             for (int j=0; j < limit; ++j) {
                 if (i != j) {
                     int coef(shortest(i,j));
-                    if (coef < min_shortest)
-                        min_shortest = coef;
-                    if (coef > max_shortest)
-                        max_shortest = coef;
-                    somme_shortest += coef;
-                    hist_shortest.at(coef)++;
+                    dist_shortest.add_data(coef);
+                    dist_row.add_data(coef);
                 }
             }
+            dist_rows.add_data(dist_row.get_max());
         }
-        stat stat_shortest(min_shortest, max_shortest, somme_shortest / (1. * limit * limit), hist_shortest);
+
+        stat<size_t> stat_shortest(dist_shortest.get_min(), dist_shortest.get_max(), dist_shortest.get_mean(), dist_shortest.get_hist(), dist_shortest.get_hist_labels());
         std::cout << "############### Stats shortests paths ###############" << std::endl;
         stat_shortest.afficher();
+        std::cout << "minimum outgoing path: " << dist_rows.get_min() << std::endl;
     }
 
     void shortest_to_matlab (std::string filename) {
@@ -535,9 +574,15 @@ public:
 
 
     void traiter(HDVF_type& X_origin, std::queue<HDVF_type>& a_traiter, std::map<std::vector<PSC_flag>, Data>& map,  int dim, int& id, bool compute_paths = false){
+        // Data in the map is updated in three steps
+        // 1) first meeting: give and id, set the distance, insert in the queue
+        // 2) head of the queue: set degrees and visit sons
+        // 3) further meetings: update the distance
+
+        // X becomes the head of the queue -> set degrees
         HDVF_type X(a_traiter.front());
         bool found_M, found_W, found_MW;
-        int deg_M, deg_W, deg_MW;
+        size_t deg_M, deg_W, deg_MW;
         std::vector<PSC_flag> flag_X, flag_X1;
         std::vector<Cell_pair> ops_M = X.find_pairs_M(dim, found_M);
         std::vector<Cell_pair> ops_W = X.find_pairs_W(dim, found_W);
@@ -545,21 +590,29 @@ public:
         deg_M = ops_M.size();
         deg_W = ops_W.size();
         deg_MW = ops_MW.size();
+        flag_X = X.psc_flags(dim);
+        map.at(flag_X).deg_M = deg_M;
+        map.at(flag_X).deg_W = deg_W;
+        map.at(flag_X).deg_MW = deg_MW;
+        map.at(flag_X).len_hom = deg_W+X.number_of_cells_by_flag(HDVF::CRITICAL, dim);
+        map.at(flag_X).len_cohom = deg_M+X.number_of_cells_by_flag(HDVF::CRITICAL, dim);
+        // For sons
         if(found_M){
             for(Cell_pair c: ops_M){
                 Operation o(operations::M, c.sigma, c.tau, dim);
                 HDVF_type X1(operer(X, o));
-                flag_X = X.psc_flags(dim);
                 flag_X1 = X1.psc_flags(dim);
+                // If already met: update the distance
                 if(map.find(flag_X1) != map.end()){
                     if((map.at(flag_X1).distance)>(1+map.at(flag_X).distance)){
                         map.at(flag_X1).distance = 1+map.at(flag_X).distance;
                         map.at(flag_X1).pred = map.at(flag_X).id;
                     }
                 }
+                // First meeting: set an id and insert in the map with degrees set to 0 (not defined)
                 else{
                     id_to_flags.push_back(X1.psc_flags(dim));
-                    Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                    Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, 0, 0, 0, 0, 0);
                     id++;
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
@@ -577,17 +630,18 @@ public:
             for(Cell_pair c: ops_W){
                 Operation o(operations::W, c.sigma, c.tau, c.dim);
                 HDVF_type X1(operer(X, o));
-                flag_X = X.psc_flags(dim);
                 flag_X1 = X1.psc_flags(dim);
+                // If already met: update the distance
                 if(map.find(flag_X1) != map.end()){
                     if((map.at(flag_X1).distance)>(1+map.at(flag_X).distance)){
                         map.at(flag_X1).distance = 1+map.at(flag_X).distance;
                         map.at(flag_X1).pred = map.at(flag_X).id;
                     }
                 }
+                // First meeting: set an id and insert in the map with degrees set to 0 (not defined)
                 else{
                     id_to_flags.push_back(X1.psc_flags(dim));
-                    Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                    Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, 0, 0, 0, 0, 0);
                     id++;
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
@@ -606,17 +660,18 @@ public:
             for(Cell_pair c: ops_MW){
                 Operation o(operations::MW, c.sigma, c.tau, c.dim);
                 HDVF_type X1(operer(X, o));
-                flag_X = X.psc_flags(dim);
                 flag_X1 = X1.psc_flags(dim);
+                // If already met: update the distance
                 if(map.find(flag_X1) != map.end()){
                     if((map.at(flag_X1).distance)>(1+map.at(flag_X).distance)){
                         map.at(flag_X1).distance = 1+map.at(flag_X).distance;
                         map.at(flag_X1).pred = map.at(flag_X).id;
                     }
                 }
+                // First meeting: set an id and insert in the map with degrees set to 0 (not defined)
                 else{
                     id_to_flags.push_back(X1.psc_flags(dim));
-                    Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, deg_M, deg_W, deg_MW);
+                    Data D(id, 1+map.at(flag_X).distance, 0, map.at(flag_X).id, o, 0, 0, 0, 0, 0);
                     id++;
                     map.insert({X1.psc_flags(dim), D});
                     a_traiter.push(X1);
@@ -639,7 +694,8 @@ public:
         int id = 0;
         Operation O0(operations::NONE, 0, 0, dim);
         bool found;
-        Data D0(id, 0, 0, 0, O0, X.find_pairs_M(dim, found).size(), X.find_pairs_W(dim, found).size(), X.find_pairs_MW(dim, found).size());
+        size_t deg_M(X.find_pairs_M(dim, found).size()), deg_W(X.find_pairs_W(dim, found).size());
+        Data D0(id, 0, 0, 0, O0, deg_M, deg_W, X.find_pairs_MW(dim, found).size(), deg_W+X.number_of_cells_by_flag(HDVF::CRITICAL, dim), deg_M+X.number_of_cells_by_flag(HDVF::CRITICAL, dim));
         id_to_flags.push_back(X.psc_flags(dim));
         id++;
         map.insert({X.psc_flags(dim),D0});
@@ -666,107 +722,50 @@ public:
         }
     }
 
-    std::vector<stat> stat_G(){
-        std::vector<stat> result;
-        int nb_elt=0, somme_dist=0, somme_dist_connectedness = 0, somme_M=0, somme_W=0, somme_MW=0, somme_dc = 0, somme_dg = 0;
-        int dist_min=10000, dist_max=0, dist_mean;
-        int dist_connectedness_min=10000, dist_connectedness_max=0, dist_connectedness_mean;
-        int deg_min_M=10000, deg_max_M=0, deg_mean_M;
-        int deg_min_W=10000, deg_max_W=0, deg_mean_W;
-        int deg_min_MW=10000, deg_max_MW=0, deg_mean_MW;
-        int dc_min=10000, dc_max=0, dc_mean;
-        int dg_min=10000, dg_max=0, dg_mean;
-        std::vector<int> hist_dist(100, 0);
-        std::vector<int> hist_dist_connectedness(100, 0);
-        std::vector<int> hist_M (50, 0);
-        std::vector<int> hist_W (50, 0);
-        std::vector<int> hist_MW (50, 0);
-        std::vector<int> hist_dc(100, 0);
-        std::vector<int> hist_dg(100, 0);
+    std::vector<stat<size_t> > compute_stats(){
+        distrib<size_t> distrib_dist, distrib_connectedness, distrib_M, distrib_W, distrib_MW, distrib_deg, distrib_delta, distrib_hom ,distrib_cohom, distrib_hom_cohom;
+
+        // Visit the map and record data in various distributions
         for(auto it=map.begin(); it!=map.end(); it++){
-            Data d = it->second;
-            if (d.distance < dist_min)
-                dist_min = d.distance;
-            if (d.distance_connectedness < dist_connectedness_min)
-                dist_connectedness_min = d.distance_connectedness;
-
-            if(d.deg_M < deg_min_M){
-                deg_min_M = d.deg_M;
-            }
-            if(d.deg_W < deg_min_W){
-                deg_min_W = d.deg_W;
-            }
-            if(d.deg_MW < deg_min_MW){
-                deg_min_MW = d.deg_MW;
-            }
-
-            ////////////////////////
-            if (d.distance > dist_max)
-                dist_max = d.distance;
-            if (d.distance_connectedness > dist_connectedness_max)
-                dist_connectedness_max = d.distance_connectedness;
-
-            if(d.deg_M > deg_max_M){
-                deg_max_M = d.deg_M;
-            }
-            if(d.deg_W > deg_max_W){
-                deg_max_W = d.deg_W;
-            }
-            if(d.deg_MW > deg_max_MW){
-                deg_max_MW = d.deg_MW;
-            }
-            /////////////////////////
-            if(d.deg_MW + d.deg_M + d.deg_W > dg_max){
-                dg_max = d.deg_MW + d.deg_M + d.deg_W;
-            }
-            if(d.deg_MW + d.deg_M + d.deg_W < dg_min){
-                dg_min = d.deg_MW + d.deg_M + d.deg_W;
-            }
-            /////////////////////////
-            if(abs(d.distance_connectedness-d.distance) < dc_min){
-                dc_min = abs(d.distance_connectedness-d.distance);
-            }
-            if(abs(d.distance_connectedness-d.distance) > dc_max){
-                dc_max = abs(d.distance_connectedness-d.distance);
-            }
-            hist_dist[d.distance] += 1;
-            hist_dist_connectedness[d.distance_connectedness] += 1;
-            hist_M[d.deg_M] += 1;
-            hist_W[d.deg_W] += 1;
-            hist_MW[d.deg_MW] += 1;
-            hist_dg[d.deg_MW+d.deg_W+d.deg_M] += 1;
-            hist_dc[abs(d.distance_connectedness-d.distance)] += 1;
-
-            somme_dist += d.distance;
-            somme_dist_connectedness += d.distance_connectedness;
-            somme_M += d.deg_M;
-            somme_W += d.deg_W;
-            somme_MW += d.deg_MW;
-            somme_dc += abs(d.distance_connectedness-d.distance);
-            somme_dg += d.deg_M + d.deg_W + d.deg_MW;
-            nb_elt++;
+            Data d(it->second);
+            Flag_type flag(it->first);
+            distrib_dist.add_data(d.distance);
+            distrib_connectedness.add_data(d.distance_connectedness);
+            distrib_delta.add_data(d.distance_connectedness-d.distance);
+            distrib_M.add_data(d.deg_M);
+            distrib_W.add_data(d.deg_W);
+            distrib_MW.add_data(d.deg_MW);
+            distrib_deg.add_data(d.deg_M+d.deg_W+d.deg_MW);
+            distrib_hom.add_data(d.len_hom);
+            distrib_cohom.add_data(d.len_cohom);
+            distrib_hom_cohom.add_data(d.len_hom+d.len_cohom);
         }
-        dist_mean = somme_dist / (1.0 * nb_elt);
-        dist_connectedness_mean = somme_dist_connectedness / (1.0 * nb_elt);
-        deg_mean_M = somme_M / (1.0 * nb_elt);
-        deg_mean_W = somme_W / (1.0 * nb_elt);
-        deg_mean_MW = somme_MW / (1.0 * nb_elt);
-        dg_mean = somme_dg / (1.0 * nb_elt);
-        dc_mean = somme_dc / (1.0 * nb_elt);
-        stat stat_dist(dist_min, dist_max, dist_mean, hist_dist);
-        stat stat_dist_connectedness(dist_connectedness_min, dist_connectedness_max, dist_connectedness_mean, hist_dist_connectedness);
-        stat stat_M(deg_min_M, deg_max_M, deg_mean_M, hist_M);
-        stat stat_W(deg_min_W, deg_max_W, deg_mean_W, hist_W);
-        stat stat_MW(deg_min_MW, deg_max_MW, deg_mean_MW, hist_MW);
-        stat stat_dc(dc_min, dc_max, dc_mean, hist_dc);
-        stat stat_dg(dg_min, dg_max, dg_mean, hist_dg);
+// Export degree stats to matlab
+        std::cout << "====> Degrees " << std::endl;
+        distrib_deg.to_matlab();
+
+        std::vector<stat<size_t> > result;
+        stat<size_t> stat_dist(distrib_dist.get_min(), distrib_dist.get_max(), distrib_dist.get_mean(), distrib_dist.get_hist(), distrib_dist.get_hist_labels());
+        stat<size_t> stat_connectedness(distrib_connectedness.get_min(), distrib_connectedness.get_max(), distrib_connectedness.get_mean(), distrib_connectedness.get_hist(), distrib_connectedness.get_hist_labels());
+        stat<size_t> stat_M(distrib_M.get_min(), distrib_M.get_max(), distrib_M.get_mean(), distrib_M.get_hist(), distrib_M.get_hist_labels());
+        stat<size_t> stat_W(distrib_W.get_min(), distrib_W.get_max(), distrib_W.get_mean(), distrib_W.get_hist(), distrib_W.get_hist_labels());
+        stat<size_t> stat_MW(distrib_MW.get_min(), distrib_MW.get_max(), distrib_MW.get_mean(), distrib_MW.get_hist(), distrib_MW.get_hist_labels());
+        stat<size_t> stat_deg(distrib_deg.get_min(), distrib_deg.get_max(), distrib_deg.get_mean(), distrib_deg.get_hist(), distrib_deg.get_hist_labels());
+        stat<size_t> stat_delta(distrib_delta.get_min(), distrib_delta.get_max(), distrib_delta.get_mean(), distrib_delta.get_hist(), distrib_delta.get_hist_labels());
+        stat<size_t> stat_hom(distrib_hom.get_min(), distrib_hom.get_max(), distrib_hom.get_mean(), distrib_hom.get_hist(), distrib_hom.get_hist_labels());
+        stat<size_t>stat_cohom(distrib_cohom.get_min(), distrib_cohom.get_max(), distrib_cohom.get_mean(), distrib_cohom.get_hist(), distrib_cohom.get_hist_labels());
+        stat<size_t> stat_hom_cohom(distrib_hom_cohom.get_min(), distrib_hom_cohom.get_max(), distrib_hom_cohom.get_mean(), distrib_hom_cohom.get_hist(), distrib_hom_cohom.get_hist_labels());
+
         result.push_back(stat_M);
         result.push_back(stat_W);
         result.push_back(stat_MW);
-        result.push_back(stat_dc);
-        result.push_back(stat_dg);
+        result.push_back(stat_delta);
+        result.push_back(stat_deg);
         result.push_back(stat_dist);
-        result.push_back(stat_dist_connectedness);
+        result.push_back(stat_connectedness);
+        result.push_back(stat_hom);
+        result.push_back(stat_cohom);
+        result.push_back(stat_hom_cohom);
         return result;
     }
 
@@ -788,6 +787,15 @@ public:
         return res;
     }
 
+    std::vector<size_t> get_min_hom_generators (int min_hom_len) {
+        std::vector<size_t> res;
+        for (Map_type::const_iterator it = map.cbegin(); it != map.cend(); ++it) {
+            if ((it->second.len_hom) == min_hom_len)
+                res.push_back(it->second.id);
+        }
+        return res;
+    }
+
     Hdvf_type build_hdvf_from_psc_flags (const std::vector<PSC_flag>& flags_dim, int dim) {
         std::vector<std::vector<PSC_flag> > flags(hdvf.psc_flags());
         flags[dim] = flags_dim;
@@ -804,7 +812,7 @@ void compute_stat(std::string& filename, std::string nodes_file){
     simp.read_nodes_file(nodes_file);
     Chain_complex complex(simp);
     std::cout << complex << std::endl;
-    Hdvf_space<HDVF_type> hs(complex, filename);
+    Hdvf_space<HDVF_type> hs(complex, 1, filename);
 }
 
 int main(int argc, char ** argv){
@@ -823,50 +831,73 @@ int main(int argc, char ** argv){
     }
     else {
         std::vector<std::string> tab, tab_nodes;
-//        tab.push_back("data/simp/three_triangles.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-//        tab.push_back("data/simp/three_triangles_d.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+        tab.push_back("data/simp/three_triangles_f.simp");
+        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-//        tab.push_back("data/simp/three_triangles_1.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+        tab.push_back("data/simp/three_triangles_1_1.simp");
+        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-//        tab.push_back("data/simp/three_triangles_inv.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+        tab.push_back("data/simp/three_triangles_2_1.simp");
+        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-//        tab.push_back("data/simp/three_triangles_f.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+        tab.push_back("data/simp/three_triangles_2_3.simp");
+        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-//        tab.push_back("data/simp/three_triangles_2.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+        tab.push_back("data/simp/three_triangles_3_2.simp");
+        tab_nodes.push_back("data/simp/three_triangles.nodes");
 
-//        tab.push_back("data/simp/three_triangles_3.simp");
-//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+        tab.push_back("data/simp/three_triangles_v.simp");
+        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//
+//        std::cout << " ================================== " << std::endl;
+//
+//        tab.push_back("data/simp/six_triangles_f.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_1.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_2.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_4_1.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_4_2.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_4_3.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_5_1.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/six_triangles_v.simp");
+//        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        std::cout << " ================================== " << std::endl;
 
-        tab.push_back("data/simp/six_triangles_v.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//        tab.push_back("data/simp/HDVF_size/three_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/three_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/six_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/seven_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/seven_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/height_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/height_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/nine_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/nine_triangles.nodes");
 
-        tab.push_back("data/simp/six_triangles_3.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
-
-        tab.push_back("data/simp/six_triangles_4_1.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
-
-        tab.push_back("data/simp/six_triangles_4_2.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
-
-        tab.push_back("data/simp/six_triangles_4_3.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
-
-        tab.push_back("data/simp/six_triangles_5_1.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
-
-        tab.push_back("data/simp/six_triangles_5_2.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
-
-        tab.push_back("data/simp/six_triangles_f.simp");
-        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//        tab.push_back("data/simp/HDVF_size/ten_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/ten_triangles.nodes");
 
         for (int i=0; i<tab.size(); ++i) {
             compute_stat(tab.at(i), tab_nodes.at(i));
