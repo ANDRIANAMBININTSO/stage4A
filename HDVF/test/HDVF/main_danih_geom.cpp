@@ -828,7 +828,7 @@ public:
         for (int i=0; i<path.size(); ++i) {
             path.at(i).afficher();
             X_current = operer(X_current, path.at(i));
-            CGAL::IO::write_VTK(hdvf, complex, (root_name+"_"+to_string(i)));
+            CGAL::IO::write_VTK(X_current, complex, (root_name+"_"+to_string(i+1)));
         }
     }
 
