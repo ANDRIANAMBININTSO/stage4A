@@ -68,6 +68,16 @@ public:
     size_t sigma(){return _sigma;}
     size_t gamma(){return _gamma;}
     int dimension(){return _dim;}
+    void afficher() const {
+        if (_op == M)
+            std::cout << "M(";
+        else if (_op == W)
+            std::cout << "W(";
+        else
+            std::cout << "MW(";
+
+        std::cout << _sigma << ", " << _gamma << ")" << std::endl;
+    }
 };
 
 struct Data
@@ -220,15 +230,21 @@ public:
         std::string matlab_file(compute_name(filename,".m"));
         shortest_to_matlab(matlab_file);
 
-        // Build HDVF from flag and export to vtk
-        // Max degrees (N elements max)
-        const int N=1;
-        for (int i=0; (i<max_degree_ids.size()) && (i<N); ++i) {
-            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(max_degree_ids.at(i)), dim));
-            std::string suffix("_max_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
-            CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
-        }
-//        // Min degrees (5 elements max)
+        // Restore the map (for connectedness computation)
+        map = map_flood;
+
+        // --------- Other computations
+
+
+        // Max degrees HDVFs (N elements max)
+//        const int N=1;
+//        for (int i=0; (i<max_degree_ids.size()) && (i<N); ++i) {
+//            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(max_degree_ids.at(i)), dim));
+//            std::string suffix("_max_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
+//            CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
+//        }
+
+//        // Min degrees HDVFs (5 elements max)
 //        for (int i=0; (i<min_degree_ids.size()) && (i<5); ++i) {
 //            Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_degree_ids.at(i)), dim));
 //            std::string suffix("_min_"+std::to_string(i)), out_hdvf_vtk_files(compute_name(filename, suffix));
@@ -240,6 +256,14 @@ public:
 //        Hdvf_type hdvf_new(build_hdvf_from_psc_flags(id_to_flags.at(min_hom_gene_ids.at(min_hom_gene_ids.size()-1)), dim));
 //        std::string suffix("_min_hom"), out_hdvf_vtk_files(compute_name(filename, suffix));
 //        CGAL::IO::write_VTK(hdvf_new, complex, out_hdvf_vtk_files);
+
+        // Computation of a pair of paths of max delta
+        std::pair<std::vector<Operation>, std::vector<Operation> > p(get_pair_paths_delta(hdvf, DC.max));
+        std::cout << "shortest path length: " << p.first.size() << " - connectedness length: " << p.second.size() << std::endl;
+        std::cout << "--- shortest path" << std::endl;
+        export_path_to_vtk(hdvf, p.first, "tmp/hdvf_shortest_path");
+        std::cout << "--- connectedness path" << std::endl;
+        export_path_to_vtk(hdvf, p.second, "tmp/hdvf_connect_path");
     }
 
     std::string compute_name(std::string filename, std::string suffix) {
@@ -328,7 +352,7 @@ public:
         out_file.close();
     }
 
-    int distance(HDVF_type X, HDVF_type X_prime, int dim){
+    int distance(const HDVF_type& X, const HDVF_type& X_prime, int dim){
         int result = 0;
         std::vector<size_t> temp;
         //XC
@@ -420,7 +444,8 @@ public:
         }
         return result;
     }
-    std::vector<Operation> connectedness(HDVF_type& X1, HDVF_type& X_prime1, int dim){
+    // Compute connectedness path
+    std::vector<Operation> connectedness(const HDVF_type& X1, const HDVF_type& X_prime1, int dim){
         HDVF_type X(X1), X_prime(X_prime1);
 #ifdef DEBUG
         std::cout << "---------------------DEBUT------------------" << std::endl;
@@ -553,7 +578,7 @@ public:
         return result;
     }
 
-    HDVF_type operer(HDVF_type X1, Operation o){
+    HDVF_type operer(const HDVF_type& X1, Operation o){
         HDVF_type X(X1);
         if(o.operation() == operations::M){
             X.M(o.sigma(), o.gamma(), o.dimension());
@@ -769,6 +794,44 @@ public:
         return result;
     }
 
+    // Get a pair of paths with error delta: sortest path / connectedness path
+    std::pair<std::vector<Operation>, std::vector<Operation> > get_pair_paths_delta(const Hdvf_type& X, int delta) {
+        std::pair<std::vector<Operation>, std::vector<Operation> > res;
+        std::vector<Operation> path, path_connected;
+        bool found=false;
+        for (Map_type::const_iterator it = map.cbegin(); !found && (it != map.cend()); ++it) {
+            if ((it->second.distance_connectedness - it->second.distance) == delta) {
+                found = true;
+                HDVF_type X1(build_hdvf_from_psc_flags(it->first, dim));
+                // Path for connectedness
+                path_connected = connectedness(X, X1, dim);
+                // Reconstruct flooding path (shortest path)
+                size_t id_X(map.at(X.psc_flags(dim)).id), id_current(it->second.id);
+                while (id_current != id_X) {
+                    path.push_back(map.at(id_to_flags.at(id_current)).op);
+                    id_current= map.at(id_to_flags.at(id_current)).pred;
+                }
+                std::reverse(path.begin(), path.end());
+                res.first=path;
+                res.second=path_connected;
+                return res;
+            }
+        }
+        // If delta not found, raise an error
+        std::cerr << "Error : delta not found" << std::endl;
+        throw "get_pair_paths_delta error";
+    }
+
+    void export_path_to_vtk(const Hdvf_type& X, const std::vector<Operation>& path, std::string root_name) {
+        CGAL::IO::write_VTK(hdvf, complex, (root_name+"_0"));
+        Hdvf_type X_current(X);
+        for (int i=0; i<path.size(); ++i) {
+            path.at(i).afficher();
+            X_current = operer(X_current, path.at(i));
+            CGAL::IO::write_VTK(hdvf, complex, (root_name+"_"+to_string(i)));
+        }
+    }
+
     std::vector<size_t> get_max_degree_hdvfs (int max_degree) {
         std::vector<size_t> res;
         for (Map_type::const_iterator it = map.cbegin(); it != map.cend(); ++it) {
@@ -832,25 +895,26 @@ int main(int argc, char ** argv){
     else {
         std::vector<std::string> tab, tab_nodes;
 
-        tab.push_back("data/simp/three_triangles_f.simp");
-        tab_nodes.push_back("data/simp/three_triangles.nodes");
-
-        tab.push_back("data/simp/three_triangles_1_1.simp");
-        tab_nodes.push_back("data/simp/three_triangles.nodes");
-
-        tab.push_back("data/simp/three_triangles_2_1.simp");
-        tab_nodes.push_back("data/simp/three_triangles.nodes");
-
-        tab.push_back("data/simp/three_triangles_2_3.simp");
-        tab_nodes.push_back("data/simp/three_triangles.nodes");
-
-        tab.push_back("data/simp/three_triangles_3_2.simp");
-        tab_nodes.push_back("data/simp/three_triangles.nodes");
-
-        tab.push_back("data/simp/three_triangles_v.simp");
-        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//        std::cout << " === three_triangles =============================== " << std::endl;
+//        tab.push_back("data/simp/three_triangles_f.simp");
+//        tab_nodes.push_back("data/simp/three_triangles.nodes");
 //
-//        std::cout << " ================================== " << std::endl;
+//        tab.push_back("data/simp/three_triangles_1_1.simp");
+//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//
+//        tab.push_back("data/simp/three_triangles_2_1.simp");
+//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//
+//        tab.push_back("data/simp/three_triangles_2_3.simp");
+//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//
+//        tab.push_back("data/simp/three_triangles_3_2.simp");
+//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//
+//        tab.push_back("data/simp/three_triangles_v.simp");
+//        tab_nodes.push_back("data/simp/three_triangles.nodes");
+//
+//        std::cout << " === six_triangles =============================== " << std::endl;
 //
 //        tab.push_back("data/simp/six_triangles_f.simp");
 //        tab_nodes.push_back("data/simp/six_triangles.nodes");
@@ -879,7 +943,7 @@ int main(int argc, char ** argv){
 //        tab.push_back("data/simp/six_triangles_v.simp");
 //        tab_nodes.push_back("data/simp/six_triangles.nodes");
 //
-//        std::cout << " ================================== " << std::endl;
+//        std::cout << " === larger models =============================== " << std::endl;
 
 //        tab.push_back("data/simp/HDVF_size/three_triangles_3.simp");
 //        tab_nodes.push_back("data/simp/HDVF_size/three_triangles.nodes");
@@ -898,6 +962,41 @@ int main(int argc, char ** argv){
 
 //        tab.push_back("data/simp/HDVF_size/ten_triangles_3.simp");
 //        tab_nodes.push_back("data/simp/HDVF_size/ten_triangles.nodes");
+
+        std::cout << " === stats delta =============================== " << std::endl;
+
+        //        tab.push_back("data/simp/six_triangles_f.simp");
+        //        tab_nodes.push_back("data/simp/six_triangles.nodes");
+        //
+                tab.push_back("data/simp/six_triangles_1.simp");
+                tab_nodes.push_back("data/simp/six_triangles.nodes");
+        //
+        //        tab.push_back("data/simp/six_triangles_2.simp");
+        //        tab_nodes.push_back("data/simp/six_triangles.nodes");
+        //
+        //        tab.push_back("data/simp/six_triangles_3.simp");
+        //        tab_nodes.push_back("data/simp/six_triangles.nodes");
+        //
+        //        tab.push_back("data/simp/six_triangles_4_1.simp");
+        //        tab_nodes.push_back("data/simp/six_triangles.nodes");
+        //
+        //        tab.push_back("data/simp/six_triangles_5_1.simp");
+        //        tab_nodes.push_back("data/simp/six_triangles.nodes");
+        //
+        //        tab.push_back("data/simp/six_triangles_v.simp");
+        //        tab_nodes.push_back("data/simp/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/three_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/three_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/six_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/six_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/seven_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/seven_triangles.nodes");
+//
+//        tab.push_back("data/simp/HDVF_size/height_triangles_3.simp");
+//        tab_nodes.push_back("data/simp/HDVF_size/height_triangles.nodes");
 
         for (int i=0; i<tab.size(); ++i) {
             compute_stat(tab.at(i), tab_nodes.at(i));

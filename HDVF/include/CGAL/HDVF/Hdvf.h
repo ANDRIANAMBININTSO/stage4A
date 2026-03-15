@@ -115,6 +115,14 @@ public:
      */
     Hdvf(const Hdvf& hdvf) : Hdvf_core<ChainComplex, OSM::Sparse_chain, OSM::Sparse_matrix>(hdvf) { }
 
+    /**
+     * \brief Affectation operator.
+     */
+    Hdvf& operator=(const Hdvf& hdvf) {
+        Base::operator=(hdvf);
+        return *this;
+    }
+
     /** \brief Constructor from the PRIMARY/SECONDARY/CRITICAL labels.
      *
      * If `build_reduction` is `false` check the combinatorial coherence of labels. If `build_reduction` is `true` checks that labels describe a valid HDVF (ie. \f$\partial(S)\_P\f$ is invertible).

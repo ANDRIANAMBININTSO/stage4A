@@ -222,6 +222,30 @@ public:
      */
     Hdvf_core(const Hdvf_core& hdvf) : _flag(hdvf._flag), _nb_P(hdvf._nb_P), _nb_S(hdvf._nb_S), _nb_C(hdvf._nb_C), _F_row(hdvf._F_row), _G_col(hdvf._G_col), _H_col(hdvf._H_col), _DD_col(hdvf._DD_col), _K(hdvf._K), _hdvf_opt(hdvf._hdvf_opt), _dimension_restriction(hdvf._dimension_restriction), _min_dimension(hdvf._min_dimension), _max_dimension(hdvf._max_dimension) { }
 
+    /**
+     * \brief Affectation operator.
+     *
+     * \exception Invalid_underlying_complex If `hdvf` does not share the same underlying complex, raises a `%std::runtime_error`.
+     */
+    Hdvf_core& operator=(const Hdvf_core& hdvf) {
+        if (_K.get_id() != hdvf._K.get_id()) {
+            throw std::runtime_error("Affectation of Hdvf_core only over the same complex");
+        }
+        _flag = hdvf._flag;
+        _nb_P = hdvf._nb_P;
+        _nb_S = hdvf._nb_S;
+        _nb_C = hdvf._nb_C;
+        _F_row = hdvf._F_row;
+        _G_col = hdvf._G_col;
+        _H_col = hdvf._H_col;
+        _DD_col = hdvf._DD_col;
+        _hdvf_opt = hdvf._hdvf_opt;
+        _dimension_restriction = hdvf._dimension_restriction;
+        _min_dimension = hdvf._min_dimension;
+        _max_dimension = hdvf._max_dimension;
+        return *this;
+    }
+
     /** \brief Constructor from the PRIMARY/SECONDARY/CRITICAL labels.
      *
      * If `build_reduction` is `false` check the combinatorial coherence of labels. If `build_reduction` is `true` checks that labels describe a valid HDVF (ie. \f$\partial(S)\_P\f$ is invertible).
